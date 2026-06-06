@@ -163,6 +163,79 @@ CREATE INDEX IF NOT EXISTS idx_batch_revoke_audits_batch ON batch_revoke_audits(
 CREATE INDEX IF NOT EXISTS idx_batch_revoke_audits_operator ON batch_revoke_audits(operatorId);
 CREATE INDEX IF NOT EXISTS idx_batch_revoke_items_audit ON batch_revoke_items(revokeAuditId);
 CREATE INDEX IF NOT EXISTS idx_batch_revoke_items_case ON batch_revoke_items(caseId);
+
+CREATE TABLE IF NOT EXISTS arbitration_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  caseType TEXT CHECK(caseType IN ('outOfStock', 'damaged', 'wrongDelivery')),
+  responsibleParty TEXT CHECK(responsibleParty IN ('merchant', 'logistics', 'platform')),
+  refundAmountMin DECIMAL(10,2) NOT NULL DEFAULT 0,
+  refundAmountMax DECIMAL(10,2) NOT NULL DEFAULT 999999.99,
+  merchantId INTEGER,
+  priority INTEGER NOT NULL,
+  suggestedAction TEXT NOT NULL CHECK(suggestedAction IN ('csRefund', 'csReject', 'review')),
+  suggestedActionLabel TEXT NOT NULL,
+  assignedCsId INTEGER,
+  assignedCsName TEXT,
+  isEnabled INTEGER NOT NULL DEFAULT 1,
+  remark TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  createdBy INTEGER NOT NULL,
+  createdByName TEXT NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (merchantId) REFERENCES users(id),
+  FOREIGN KEY (assignedCsId) REFERENCES users(id),
+  FOREIGN KEY (createdBy) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS rule_hit_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  caseId INTEGER NOT NULL,
+  ruleId INTEGER NOT NULL,
+  hitReason TEXT NOT NULL,
+  suggestedAction TEXT NOT NULL,
+  assignedCsId INTEGER,
+  assignedCsName TEXT,
+  isOverridden INTEGER NOT NULL DEFAULT 0,
+  overrideRemark TEXT,
+  overriddenBy INTEGER,
+  overriddenByName TEXT,
+  overriddenAt DATETIME,
+  version INTEGER NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (caseId) REFERENCES cases(id),
+  FOREIGN KEY (ruleId) REFERENCES arbitration_rules(id),
+  FOREIGN KEY (overriddenBy) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS rule_audit_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ruleId INTEGER,
+  caseId INTEGER,
+  operationType TEXT NOT NULL CHECK(operationType IN ('create', 'update', 'delete', 'enable', 'disable', 'hit', 'override', 'import', 'export')),
+  operatorId INTEGER NOT NULL,
+  operatorName TEXT NOT NULL,
+  operatorRole TEXT NOT NULL,
+  beforeChange TEXT,
+  afterChange TEXT,
+  remark TEXT,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (ruleId) REFERENCES arbitration_rules(id),
+  FOREIGN KEY (caseId) REFERENCES cases(id),
+  FOREIGN KEY (operatorId) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rules_priority ON arbitration_rules(priority);
+CREATE INDEX IF NOT EXISTS idx_rules_enabled ON arbitration_rules(isEnabled);
+CREATE INDEX IF NOT EXISTS idx_rules_type ON arbitration_rules(caseType);
+CREATE INDEX IF NOT EXISTS idx_rules_party ON arbitration_rules(responsibleParty);
+CREATE INDEX IF NOT EXISTS idx_rules_merchant ON arbitration_rules(merchantId);
+CREATE INDEX IF NOT EXISTS idx_rule_hits_case ON rule_hit_records(caseId);
+CREATE INDEX IF NOT EXISTS idx_rule_hits_rule ON rule_hit_records(ruleId);
+CREATE INDEX IF NOT EXISTS idx_audit_rule ON rule_audit_logs(ruleId);
+CREATE INDEX IF NOT EXISTS idx_audit_case ON rule_audit_logs(caseId);
+CREATE INDEX IF NOT EXISTS idx_audit_operation ON rule_audit_logs(operationType);
+CREATE INDEX IF NOT EXISTS idx_audit_created ON rule_audit_logs(createdAt);
 `;
 
 export const INITIAL_USERS_SQL = `

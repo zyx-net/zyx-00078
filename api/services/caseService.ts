@@ -7,7 +7,8 @@ import {
   CreateCaseRequest,
   CaseListFilter,
   CaseDetail,
-  ERROR_CODES
+  ERROR_CODES,
+  RuleMatchResult
 } from '../../shared/types.js';
 import {
   createCase as repoCreateCase,
@@ -18,6 +19,7 @@ import {
   findRefundedCases
 } from '../repositories/caseRepository.js';
 import { findUserById, findUsersByRole } from '../repositories/userRepository.js';
+import { matchAndRecordRule } from './ruleService.js';
 
 interface StateTransition {
   action: CaseAction;
@@ -65,7 +67,7 @@ export function createCase(
   data: CreateCaseRequest,
   createdBy: number,
   createdByName: string
-): { success: boolean; data?: Case; error?: { code: string; message: string } } {
+): { success: boolean; data?: Case; error?: { code: string; message: string }; ruleMatch?: RuleMatchResult | null } {
   const merchant = findUserById(data.merchantId);
   if (!merchant || merchant.role !== 'merchant') {
     return {
@@ -78,7 +80,10 @@ export function createCase(
   }
 
   const caseData = repoCreateCase(data, createdBy, createdByName, merchant.name);
-  return { success: true, data: caseData };
+  
+  const ruleMatch = matchAndRecordRule(caseData, createdBy, createdByName, 'leader');
+  
+  return { success: true, data: caseData, ruleMatch };
 }
 
 export function getCaseDetail(id: number): { success: boolean; data?: CaseDetail; error?: { code: string; message: string } } {
@@ -110,7 +115,7 @@ export function executeCaseAction(
   operatorId: number,
   operatorName: string,
   operatorRole: UserRole
-): { success: boolean; data?: Case; error?: { code: string; message: string } } {
+): { success: boolean; data?: Case; error?: { code: string; message: string }; ruleMatch?: RuleMatchResult | null } {
   const caseInfo = findCaseById(caseId);
   if (!caseInfo) {
     return {
@@ -214,7 +219,12 @@ export function executeCaseAction(
     };
   }
 
-  return { success: true, data: result.case };
+  let ruleMatch: RuleMatchResult | null = null;
+  if (actionData.action === 'merchantRespond' && result.case) {
+    ruleMatch = matchAndRecordRule(result.case, operatorId, operatorName, operatorRole);
+  }
+
+  return { success: true, data: result.case, ruleMatch };
 }
 
 export function getMerchantList() {

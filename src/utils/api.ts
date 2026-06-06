@@ -18,7 +18,15 @@ import {
   BatchRevokePreviewRequest,
   BatchRevokePreviewResponse,
   BatchRevokeExecuteRequest,
-  BatchRevokeExecuteResponse
+  BatchRevokeExecuteResponse,
+  ArbitrationRule,
+  CreateRuleRequest,
+  UpdateRuleRequest,
+  RuleListFilter,
+  RuleImportResult,
+  RuleHitRecord,
+  RuleAuditLog,
+  RuleMatchResult
 } from '../../shared/types.js';
 
 const BASE_URL = '/api';
@@ -248,4 +256,119 @@ export async function exportRevokeBatchCSV(
   a.click();
   document.body.removeChild(a);
   window.URL.revokeObjectURL(url);
+}
+
+export async function getCsList(): Promise<ApiResponse<Array<{ id: number; name: string }>>> {
+  return request<Array<{ id: number; name: string }>>('/rules/cs-list');
+}
+
+export async function getRules(filter: RuleListFilter = {}): Promise<ApiResponse<ArbitrationRule[]>> {
+  const params = new URLSearchParams();
+  if (filter.caseType) params.append('caseType', filter.caseType);
+  if (filter.responsibleParty) params.append('responsibleParty', filter.responsibleParty);
+  if (filter.isEnabled !== undefined) params.append('isEnabled', filter.isEnabled.toString());
+  if (filter.keyword) params.append('keyword', filter.keyword);
+
+  const query = params.toString();
+  return request<ArbitrationRule[]>(`/rules${query ? `?${query}` : ''}`);
+}
+
+export async function getRule(id: number): Promise<ApiResponse<ArbitrationRule>> {
+  return request<ArbitrationRule>(`/rules/${id}`);
+}
+
+export async function createRule(data: CreateRuleRequest): Promise<ApiResponse<ArbitrationRule>> {
+  return request<ArbitrationRule>('/rules', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
+export async function updateRule(id: number, data: UpdateRuleRequest): Promise<ApiResponse<ArbitrationRule>> {
+  return request<ArbitrationRule>(`/rules/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data)
+  });
+}
+
+export async function deleteRule(id: number): Promise<ApiResponse<void>> {
+  return request<void>(`/rules/${id}`, {
+    method: 'DELETE'
+  });
+}
+
+export async function enableRule(id: number): Promise<ApiResponse<ArbitrationRule>> {
+  return request<ArbitrationRule>(`/rules/${id}/enable`, {
+    method: 'POST'
+  });
+}
+
+export async function disableRule(id: number): Promise<ApiResponse<ArbitrationRule>> {
+  return request<ArbitrationRule>(`/rules/${id}/disable`, {
+    method: 'POST'
+  });
+}
+
+export async function getCaseRuleInfo(caseId: number): Promise<ApiResponse<(RuleHitRecord & { rule?: ArbitrationRule }) | null>> {
+  return request<(RuleHitRecord & { rule?: ArbitrationRule }) | null>(`/rules/case/${caseId}/rule-info`);
+}
+
+export async function overrideRuleHit(caseId: number, overrideRemark: string): Promise<ApiResponse<void>> {
+  return request<void>(`/rules/case/${caseId}/override`, {
+    method: 'POST',
+    body: JSON.stringify({ overrideRemark })
+  });
+}
+
+export async function exportRulesCSV(): Promise<void> {
+  const token = getToken();
+  const response = await fetch(
+    `${BASE_URL}/rules/export/csv`,
+    {
+      headers: {
+        'Authorization': `Bearer ${token || ''}`
+      }
+    }
+  );
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `arbitration_rules_${Date.now()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}
+
+export async function importRulesCSV(csvContent: string): Promise<ApiResponse<RuleImportResult>> {
+  return request<RuleImportResult>('/rules/import/csv', {
+    method: 'POST',
+    body: JSON.stringify({ csvContent })
+  });
+}
+
+export async function getRuleAuditLogs(ruleId: number): Promise<ApiResponse<RuleAuditLog[]>> {
+  return request<RuleAuditLog[]>(`/rules/${ruleId}/audit-logs`);
+}
+
+export async function getCaseRuleAuditLogs(caseId: number): Promise<ApiResponse<RuleAuditLog[]>> {
+  return request<RuleAuditLog[]>(`/rules/case/${caseId}/audit-logs`);
+}
+
+export async function getAllRuleAuditLogs(filter: {
+  operationType?: string;
+  operatorId?: number;
+  startDate?: string;
+  endDate?: string;
+} = {}): Promise<ApiResponse<RuleAuditLog[]>> {
+  const params = new URLSearchParams();
+  if (filter.operationType) params.append('operationType', filter.operationType);
+  if (filter.operatorId) params.append('operatorId', filter.operatorId.toString());
+  if (filter.startDate) params.append('startDate', filter.startDate);
+  if (filter.endDate) params.append('endDate', filter.endDate);
+
+  const query = params.toString();
+  return request<RuleAuditLog[]>(`/rules/audit-logs/all${query ? `?${query}` : ''}`);
 }

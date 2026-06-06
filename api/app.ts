@@ -15,6 +15,7 @@ import authRoutes from './routes/auth.js'
 import caseRoutes from './routes/cases.js'
 import exportRoutes from './routes/export.js'
 import batchRoutes from './routes/batch.js'
+import ruleRoutes from './routes/rules.js'
 
 // for esm mode
 const __filename = fileURLToPath(import.meta.url)
@@ -36,6 +37,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api/cases', caseRoutes)
 app.use('/api/export', exportRoutes)
 app.use('/api/batch', batchRoutes)
+app.use('/api/rules', ruleRoutes)
 
 /**
  * health

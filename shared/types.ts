@@ -389,3 +389,128 @@ export const BATCH_ITEM_STATUS_LABELS: Record<BatchItemStatus, string> = {
   failed: '失败',
   skipped: '已跳过'
 };
+
+export type RuleSuggestedAction = 'csRefund' | 'csReject' | 'review';
+
+export const RULE_SUGGESTED_ACTION_LABELS: Record<RuleSuggestedAction, string> = {
+  csRefund: '同意退款',
+  csReject: '驳回申请',
+  review: '人工审核'
+};
+
+export type RuleOperationType = 'create' | 'update' | 'delete' | 'enable' | 'disable' | 'hit' | 'override' | 'import' | 'export';
+
+export const RULE_OPERATION_TYPE_LABELS: Record<RuleOperationType, string> = {
+  create: '创建规则',
+  update: '更新规则',
+  delete: '删除规则',
+  enable: '启用规则',
+  disable: '禁用规则',
+  hit: '规则命中',
+  override: '人工覆盖',
+  import: '导入规则',
+  export: '导出规则'
+};
+
+export interface ArbitrationRule {
+  id: number;
+  caseType: CaseType | null;
+  responsibleParty: ResponsibleParty | null;
+  refundAmountMin: number;
+  refundAmountMax: number;
+  merchantId: number | null;
+  priority: number;
+  suggestedAction: RuleSuggestedAction;
+  suggestedActionLabel: string;
+  assignedCsId: number | null;
+  assignedCsName: string | null;
+  isEnabled: boolean;
+  remark: string | null;
+  version: number;
+  createdBy: number;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateRuleRequest {
+  caseType: CaseType | null;
+  responsibleParty: ResponsibleParty | null;
+  refundAmountMin: number;
+  refundAmountMax: number;
+  merchantId: number | null;
+  priority: number;
+  suggestedAction: RuleSuggestedAction;
+  assignedCsId: number | null;
+  remark: string | null;
+}
+
+export interface UpdateRuleRequest extends CreateRuleRequest {
+  version: number;
+}
+
+export interface RuleHitRecord {
+  id: number;
+  caseId: number;
+  ruleId: number;
+  hitReason: string;
+  suggestedAction: RuleSuggestedAction;
+  assignedCsId: number | null;
+  assignedCsName: string | null;
+  isOverridden: boolean;
+  overrideRemark: string | null;
+  overriddenBy: number | null;
+  overriddenByName: string | null;
+  overriddenAt: string | null;
+  version: number;
+  createdAt: string;
+}
+
+export interface RuleMatchResult {
+  rule: ArbitrationRule;
+  hitReason: string;
+}
+
+export interface CaseRuleInfo extends Case {
+  ruleHit?: RuleHitRecord & { rule?: ArbitrationRule };
+}
+
+export interface RuleAuditLog {
+  id: number;
+  ruleId: number | null;
+  caseId: number | null;
+  operationType: RuleOperationType;
+  operatorId: number;
+  operatorName: string;
+  operatorRole: UserRole;
+  beforeChange: string | null;
+  afterChange: string | null;
+  remark: string | null;
+  createdAt: string;
+}
+
+export interface RuleImportResult {
+  successCount: number;
+  failedCount: number;
+  skippedCount: number;
+  errors: Array<{ row: number; error: string }>;
+  warnings: Array<{ row: number; warning: string }>;
+}
+
+export interface RuleListFilter {
+  caseType?: CaseType;
+  responsibleParty?: ResponsibleParty;
+  isEnabled?: boolean;
+  keyword?: string;
+}
+
+export const RULE_ERROR_CODES = {
+  RULE_NOT_FOUND: 'RULE_NOT_FOUND',
+  VERSION_CONFLICT: 'VERSION_CONFLICT',
+  PRIORITY_CONFLICT: 'PRIORITY_CONFLICT',
+  INVALID_AMOUNT_RANGE: 'INVALID_AMOUNT_RANGE',
+  INVALID_RULE: 'INVALID_RULE',
+  DUPLICATE_PRIORITY: 'DUPLICATE_PRIORITY',
+  IMPORT_FORMAT_ERROR: 'IMPORT_FORMAT_ERROR',
+  NO_PERMISSION: 'NO_PERMISSION'
+} as const;

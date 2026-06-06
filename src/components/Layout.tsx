@@ -7,7 +7,8 @@ import {
   LogOut,
   User,
   Menu,
-  X
+  X,
+  Settings
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/store/authStore';
@@ -37,6 +38,12 @@ const menuItems = [
     path: '/batch',
     label: '批量操作历史',
     icon: Layers,
+    roles: ['cs']
+  },
+  {
+    path: '/rules',
+    label: '规则配置',
+    icon: Settings,
     roles: ['cs']
   }
 ];

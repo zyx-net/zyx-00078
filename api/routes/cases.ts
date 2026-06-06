@@ -100,7 +100,11 @@ router.post('/', requireRole('leader'), (req, res) => {
     res.status(400).json(result);
     return;
   }
-  res.status(201).json(result);
+  res.status(201).json({
+    success: result.success,
+    data: result.data,
+    ruleMatch: result.ruleMatch
+  });
 });
 
 router.post('/:id/action', (req, res) => {
@@ -149,7 +153,11 @@ router.post('/:id/action', (req, res) => {
     return;
   }
 
-  res.json(result);
+  res.json({
+    success: result.success,
+    data: result.data,
+    ruleMatch: result.ruleMatch
+  });
 });
 
 export default router;
