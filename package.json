@@ -14,7 +14,8 @@
     "test:batch": "node --import tsx/esm tests/batchOperation.test.ts",
     "test:frontend": "node --import tsx/esm tests/batchRevokeFrontend.test.ts",
     "test:rules": "node --import tsx/esm tests/ruleOperation.test.ts",
-    "test:all": "npm run test:batch && npm run test:frontend && npm run test:rules"
+    "test:export": "node --import tsx/esm tests/exportRefund.test.ts",
+    "test:all": "npm run test:batch && npm run test:frontend && npm run test:rules && npm run test:export"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

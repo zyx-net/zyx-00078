@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { Search, Download, FileSpreadsheet, Calendar } from 'lucide-react';
-import { getRefunds, exportRefundsCSV } from '@/utils/api';
+import { Search, Download, FileSpreadsheet, Calendar, CheckCircle, FileText } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { getRefunds, createExportRecord, downloadExportCSV } from '@/utils/api';
 import { useAuthStore } from '@/store/authStore';
 import { StatusBadge, TypeBadge, PartyBadge } from '@/components/StatusBadge';
-import { Case, CASE_TYPE_LABELS, RESPONSIBLE_PARTY_LABELS } from '../../shared/types';
+import { Case, CASE_TYPE_LABELS, RESPONSIBLE_PARTY_LABELS, CreateExportResponse } from '../../shared/types';
 
 export default function ExportRefunds() {
   const { user } = useAuthStore();
+  const navigate = useNavigate();
   const [startDate, setStartDate] = useState(() => {
     const date = new Date();
     date.setMonth(date.getMonth() - 1);
@@ -19,6 +21,7 @@ export default function ExportRefunds() {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [exportSuccess, setExportSuccess] = useState<CreateExportResponse | null>(null);
 
   if (user?.role !== 'cs') {
     return null;
@@ -41,8 +44,15 @@ export default function ExportRefunds() {
   const handleExport = async () => {
     if (!startDate || !endDate) return;
     setExporting(true);
+    setExportSuccess(null);
     try {
-      await exportRefundsCSV(startDate, endDate);
+      const result = await createExportRecord(startDate, endDate);
+      if (result.success && result.data) {
+        setExportSuccess(result.data);
+        await downloadExportCSV(result.data.exportId);
+      } else {
+        alert(result.error?.message || '导出失败');
+      }
     } finally {
       setExporting(false);
     }
@@ -124,6 +134,52 @@ export default function ExportRefunds() {
           )}
         </div>
       </div>
+
+      {exportSuccess && (
+        <div className="bg-green-50 border border-green-200 rounded-2xl p-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              <CheckCircle className="w-6 h-6 text-green-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-bold text-green-800 mb-2">导出记录已创建</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <p className="text-sm text-green-600">导出编号</p>
+                  <p className="font-mono font-semibold text-green-800">{exportSuccess.exportNo}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-green-600">命中案件数</p>
+                  <p className="font-semibold text-green-800">{exportSuccess.caseCount} 笔</p>
+                </div>
+                <div>
+                  <p className="text-sm text-green-600">总退款金额</p>
+                  <p className="font-semibold text-green-800">¥{exportSuccess.totalRefundAmount.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-green-600">文件摘要</p>
+                  <p className="font-mono text-xs text-green-800">{exportSuccess.fileHash.substring(0, 16)}...</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => navigate('/export/history')}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors"
+                >
+                  <FileText className="w-4 h-4" />
+                  查看导出历史
+                </button>
+                <button
+                  onClick={() => setExportSuccess(null)}
+                  className="px-4 py-2 text-green-700 hover:bg-green-100 font-medium rounded-lg transition-colors"
+                >
+                  关闭提示
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {hasSearched && (
         <>

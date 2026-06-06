@@ -6,6 +6,7 @@ import CaseList from '@/pages/CaseList';
 import CaseDetail from '@/pages/CaseDetail';
 import NewCase from '@/pages/NewCase';
 import ExportRefunds from '@/pages/ExportRefunds';
+import ExportHistory from '@/pages/ExportHistory';
 import BatchHistory from '@/pages/BatchHistory';
 import RuleConfig from '@/pages/RuleConfig';
 
@@ -58,6 +59,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['cs']}>
                 <ExportRefunds />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="export/history"
+            element={
+              <ProtectedRoute allowedRoles={['cs']}>
+                <ExportHistory />
               </ProtectedRoute>
             }
           />

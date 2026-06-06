@@ -26,7 +26,10 @@ import {
   RuleImportResult,
   RuleHitRecord,
   RuleAuditLog,
-  RuleMatchResult
+  RuleMatchResult,
+  ExportRecord,
+  ExportRecordListFilter,
+  CreateExportResponse
 } from '../../shared/types.js';
 
 const BASE_URL = '/api';
@@ -133,13 +136,20 @@ export async function getRefunds(
   return request<Case[]>(`/export/refunds?startDate=${startDate}&endDate=${endDate}`);
 }
 
-export async function exportRefundsCSV(
+export async function createExportRecord(
   startDate: string,
   endDate: string
-): Promise<void> {
+): Promise<ApiResponse<CreateExportResponse>> {
+  return request<CreateExportResponse>('/export/refunds', {
+    method: 'POST',
+    body: JSON.stringify({ startDate, endDate })
+  });
+}
+
+export async function downloadExportCSV(exportId: number): Promise<void> {
   const token = getToken();
   const response = await fetch(
-    `${BASE_URL}/export/refunds?startDate=${startDate}&endDate=${endDate}&format=csv`,
+    `${BASE_URL}/export/records/${exportId}/download`,
     {
       headers: {
         'Authorization': `Bearer ${token || ''}`
@@ -151,11 +161,33 @@ export async function exportRefundsCSV(
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `refund_list_${startDate}_${endDate}.csv`;
+  a.download = `refund_export_${exportId}_${Date.now()}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   window.URL.revokeObjectURL(url);
+}
+
+export async function getExportRecords(
+  filter: ExportRecordListFilter = {}
+): Promise<ApiResponse<ExportRecord[]>> {
+  const params = new URLSearchParams();
+  if (filter.startDate) params.append('startDate', filter.startDate);
+  if (filter.endDate) params.append('endDate', filter.endDate);
+  if (filter.operatorId !== undefined) params.append('operatorId', filter.operatorId.toString());
+
+  const query = params.toString();
+  return request<ExportRecord[]>(`/export/records${query ? `?${query}` : ''}`);
+}
+
+export async function getExportRecordDetail(
+  id: number
+): Promise<ApiResponse<ExportRecord>> {
+  return request<ExportRecord>(`/export/records/${id}`);
+}
+
+export async function getExportOperators(): Promise<ApiResponse<Array<{ id: number; name: string }>>> {
+  return request<Array<{ id: number; name: string }>>('/export/operators');
 }
 
 export async function previewBatch(

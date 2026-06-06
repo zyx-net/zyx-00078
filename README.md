@@ -1302,7 +1302,12 @@ curl -X POST http://localhost:3001/api/cases/{caseId}/action \
 ### 导出
 | 方法 | 路径 | 说明 | 权限 |
 |------|------|------|------|
-| GET | `/api/export/refunds` | 导出退款清单CSV | 客服 |
+| GET | `/api/export/refunds` | 查询退款数据列表 | 客服 |
+| POST | `/api/export/refunds` | 创建退款导出记录（生成快照） | 客服 |
+| GET | `/api/export/records` | 查询导出历史记录列表 | 客服 |
+| GET | `/api/export/records/:id` | 获取导出记录详情 | 客服 |
+| GET | `/api/export/records/:id/download` | 重新下载导出的CSV文件 | 客服 |
+| GET | `/api/export/operators` | 获取客服列表（用于筛选） | 客服 |
 
 ---
 
@@ -1372,6 +1377,22 @@ A: 确认后端服务已启动（端口3001），检查 vite.config.ts 中的代
 
 ### Q: Token过期了怎么办？
 A: 重新登录即可，Token有效期24小时
+
+### Q: 演示账号登录失败（401错误）怎么办？
+A: 这是bcryptjs版本兼容性问题。系统启动时会自动检测并修复密码哈希：
+1. 停止服务（Ctrl+C）
+2. 重新启动服务（`npm run dev`）
+3. 观察启动日志，应该看到「修复了 X 个用户的密码哈希」
+4. 重新登录即可
+
+如果问题仍然存在，可以删除数据库文件重置：
+```bash
+# Windows PowerShell
+Remove-Item data\database.sqlite, data\database.sqlite-wal, data\database.sqlite-shm -Force
+
+# 然后重新启动服务
+npm run dev
+```
 
 ---
 

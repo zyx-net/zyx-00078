@@ -8,7 +8,8 @@ import {
   User,
   Menu,
   X,
-  Settings
+  Settings,
+  History
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/store/authStore';
@@ -32,6 +33,12 @@ const menuItems = [
     path: '/export',
     label: '退款导出',
     icon: FileDown,
+    roles: ['cs']
+  },
+  {
+    path: '/export/history',
+    label: '导出历史',
+    icon: History,
     roles: ['cs']
   },
   {

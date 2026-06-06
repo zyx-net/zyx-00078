@@ -514,3 +514,43 @@ export const RULE_ERROR_CODES = {
   IMPORT_FORMAT_ERROR: 'IMPORT_FORMAT_ERROR',
   NO_PERMISSION: 'NO_PERMISSION'
 } as const;
+
+export interface ExportRecord {
+  id: number;
+  exportNo: string;
+  startDate: string;
+  endDate: string;
+  operatorId: number;
+  operatorName: string;
+  caseCount: number;
+  totalRefundAmount: number;
+  fileHash: string;
+  fileSize: number;
+  csvContent: string;
+  createdAt: string;
+}
+
+export interface ExportRecordListFilter {
+  startDate?: string;
+  endDate?: string;
+  operatorId?: number;
+}
+
+export interface CreateExportRequest {
+  startDate: string;
+  endDate: string;
+}
+
+export interface CreateExportResponse {
+  exportId: number;
+  exportNo: string;
+  caseCount: number;
+  totalRefundAmount: number;
+  fileHash: string;
+}
+
+export const EXPORT_ERROR_CODES = {
+  EXPORT_NOT_FOUND: 'EXPORT_NOT_FOUND',
+  EXPORT_EMPTY: 'EXPORT_EMPTY',
+  NO_PERMISSION: 'NO_PERMISSION'
+} as const;

@@ -236,6 +236,25 @@ CREATE INDEX IF NOT EXISTS idx_audit_rule ON rule_audit_logs(ruleId);
 CREATE INDEX IF NOT EXISTS idx_audit_case ON rule_audit_logs(caseId);
 CREATE INDEX IF NOT EXISTS idx_audit_operation ON rule_audit_logs(operationType);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON rule_audit_logs(createdAt);
+
+CREATE TABLE IF NOT EXISTS export_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  exportNo TEXT UNIQUE NOT NULL,
+  startDate TEXT NOT NULL,
+  endDate TEXT NOT NULL,
+  operatorId INTEGER NOT NULL,
+  operatorName TEXT NOT NULL,
+  caseCount INTEGER NOT NULL DEFAULT 0,
+  totalRefundAmount DECIMAL(12,2) NOT NULL DEFAULT 0,
+  fileHash TEXT NOT NULL,
+  fileSize INTEGER NOT NULL DEFAULT 0,
+  csvContent TEXT NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (operatorId) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_export_records_created ON export_records(createdAt);
+CREATE INDEX IF NOT EXISTS idx_export_records_operator ON export_records(operatorId);
 `;
 
 export const INITIAL_USERS_SQL = `
