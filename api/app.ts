@@ -14,6 +14,7 @@ import { fileURLToPath } from 'url'
 import authRoutes from './routes/auth.js'
 import caseRoutes from './routes/cases.js'
 import exportRoutes from './routes/export.js'
+import batchRoutes from './routes/batch.js'
 
 // for esm mode
 const __filename = fileURLToPath(import.meta.url)
@@ -34,6 +35,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 app.use('/api/auth', authRoutes)
 app.use('/api/cases', caseRoutes)
 app.use('/api/export', exportRoutes)
+app.use('/api/batch', batchRoutes)
 
 /**
  * health

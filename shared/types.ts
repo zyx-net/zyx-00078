@@ -154,6 +154,105 @@ export const CASE_ACTION_LABELS: Record<CaseAction | 'create', string> = {
   csReject: '驳回申请'
 };
 
+export type BatchOperationAction = 'csRefund' | 'csReject';
+
+export type BatchItemStatus = 'pending' | 'success' | 'failed' | 'skipped';
+
+export interface BatchItemResult {
+  caseId: number;
+  orderNo: string;
+  status: BatchItemStatus;
+  currentVersion: number;
+  refundAmount: number;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
+export interface BatchOperation {
+  id: number;
+  batchNo: string;
+  action: BatchOperationAction;
+  operatorId: number;
+  operatorName: string;
+  remark: string;
+  totalCount: number;
+  successCount: number;
+  failedCount: number;
+  skippedCount: number;
+  totalRefundAmount: number;
+  createdAt: string;
+}
+
+export interface BatchItem {
+  id: number;
+  batchId: number;
+  caseId: number;
+  orderNo: string;
+  originalStatus: CaseStatus;
+  originalVersion: number;
+  refundAmount: number;
+  status: BatchItemStatus;
+  errorCode?: string;
+  errorMessage?: string;
+  newVersion?: number;
+  newStatus?: CaseStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BatchDetail extends BatchOperation {
+  items: BatchItem[];
+}
+
+export interface BatchPreviewRequest {
+  caseIds: number[];
+  action: BatchOperationAction;
+}
+
+export interface BatchPreviewItem {
+  caseId: number;
+  orderNo: string;
+  currentStatus: CaseStatus;
+  currentVersion: number;
+  refundAmount: number;
+  canProcess: boolean;
+  reason?: string;
+}
+
+export interface BatchPreviewResponse {
+  items: BatchPreviewItem[];
+  totalCount: number;
+  processableCount: number;
+  unprocessableCount: number;
+  totalRefundAmount: number;
+  processableRefundAmount: number;
+}
+
+export interface BatchExecuteRequest {
+  caseIds: number[];
+  action: BatchOperationAction;
+  remark: string;
+  versions: Record<number, number>;
+}
+
+export interface BatchExecuteResponse {
+  batchNo: string;
+  action: BatchOperationAction;
+  totalCount: number;
+  successCount: number;
+  failedCount: number;
+  skippedCount: number;
+  totalRefundAmount: number;
+  successRefundAmount: number;
+  items: BatchItemResult[];
+}
+
+export interface BatchListFilter {
+  startDate?: string;
+  endDate?: string;
+  action?: BatchOperationAction;
+}
+
 export const ERROR_CODES = {
   UNAUTHORIZED: 'UNAUTHORIZED',
   PERMISSION_DENIED: 'PERMISSION_DENIED',
@@ -162,5 +261,19 @@ export const ERROR_CODES = {
   VERSION_CONFLICT: 'VERSION_CONFLICT',
   INVALID_STATUS_TRANSITION: 'INVALID_STATUS_TRANSITION',
   MISSING_EVIDENCE: 'MISSING_EVIDENCE',
-  SERVER_ERROR: 'SERVER_ERROR'
+  SERVER_ERROR: 'SERVER_ERROR',
+  BATCH_EMPTY: 'BATCH_EMPTY',
+  BATCH_NOT_FOUND: 'BATCH_NOT_FOUND'
 } as const;
+
+export const BATCH_OPERATION_LABELS: Record<BatchOperationAction, string> = {
+  csRefund: '批量同意退款',
+  csReject: '批量驳回'
+};
+
+export const BATCH_ITEM_STATUS_LABELS: Record<BatchItemStatus, string> = {
+  pending: '待处理',
+  success: '成功',
+  failed: '失败',
+  skipped: '已跳过'
+};

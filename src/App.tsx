@@ -6,6 +6,7 @@ import CaseList from '@/pages/CaseList';
 import CaseDetail from '@/pages/CaseDetail';
 import NewCase from '@/pages/NewCase';
 import ExportRefunds from '@/pages/ExportRefunds';
+import BatchHistory from '@/pages/BatchHistory';
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) {
   const { user } = useAuthStore();
@@ -56,6 +57,22 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['cs']}>
                 <ExportRefunds />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="batch"
+            element={
+              <ProtectedRoute allowedRoles={['cs']}>
+                <BatchHistory />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="batch/:batchId"
+            element={
+              <ProtectedRoute allowedRoles={['cs']}>
+                <BatchHistory />
               </ProtectedRoute>
             }
           />

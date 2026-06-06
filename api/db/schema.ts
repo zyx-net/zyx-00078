@@ -59,12 +59,51 @@ CREATE TABLE IF NOT EXISTS evidences (
   FOREIGN KEY (uploaderId) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS batch_operations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  batchNo TEXT UNIQUE NOT NULL,
+  action TEXT NOT NULL CHECK(action IN ('csRefund', 'csReject')),
+  operatorId INTEGER NOT NULL,
+  operatorName TEXT NOT NULL,
+  remark TEXT,
+  totalCount INTEGER NOT NULL DEFAULT 0,
+  successCount INTEGER NOT NULL DEFAULT 0,
+  failedCount INTEGER NOT NULL DEFAULT 0,
+  skippedCount INTEGER NOT NULL DEFAULT 0,
+  totalRefundAmount DECIMAL(12,2) NOT NULL DEFAULT 0,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (operatorId) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS batch_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  batchId INTEGER NOT NULL,
+  caseId INTEGER NOT NULL,
+  orderNo TEXT NOT NULL,
+  originalStatus TEXT NOT NULL,
+  originalVersion INTEGER NOT NULL,
+  refundAmount DECIMAL(10,2) NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'success', 'failed', 'skipped')),
+  errorCode TEXT,
+  errorMessage TEXT,
+  newVersion INTEGER,
+  newStatus TEXT,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (batchId) REFERENCES batch_operations(id),
+  FOREIGN KEY (caseId) REFERENCES cases(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status);
 CREATE INDEX IF NOT EXISTS idx_cases_type ON cases(caseType);
 CREATE INDEX IF NOT EXISTS idx_cases_merchant ON cases(merchantId);
 CREATE INDEX IF NOT EXISTS idx_cases_created ON cases(createdBy);
 CREATE INDEX IF NOT EXISTS idx_versions_case ON case_versions(caseId);
 CREATE INDEX IF NOT EXISTS idx_evidences_case ON evidences(caseId);
+CREATE INDEX IF NOT EXISTS idx_batch_operations_created ON batch_operations(createdAt);
+CREATE INDEX IF NOT EXISTS idx_batch_operations_operator ON batch_operations(operatorId);
+CREATE INDEX IF NOT EXISTS idx_batch_items_batch ON batch_items(batchId);
+CREATE INDEX IF NOT EXISTS idx_batch_items_case ON batch_items(caseId);
 `;
 
 export const INITIAL_USERS_SQL = `

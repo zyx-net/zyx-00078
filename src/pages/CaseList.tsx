@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, Eye, RefreshCw } from 'lucide-react';
+import { Search, Plus, Eye, RefreshCw, CheckSquare, Square, CheckCircle, XCircle, Layers } from 'lucide-react';
 import { getCases } from '@/utils/api';
 import { useAuthStore } from '@/store/authStore';
 import { StatusBadge, TypeBadge, PartyBadge } from '@/components/StatusBadge';
+import BatchOperationModal from '@/components/BatchOperationModal';
 import {
   Case,
   CaseType,
   CaseStatus,
   ResponsibleParty,
   CaseListFilter,
+  BatchOperationAction,
+  BatchExecuteResponse,
   CASE_TYPE_LABELS,
   CASE_STATUS_LABELS,
   RESPONSIBLE_PARTY_LABELS
@@ -21,6 +24,9 @@ export default function CaseList() {
   const [cases, setCases] = useState<Case[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<CaseListFilter>({});
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [batchModalOpen, setBatchModalOpen] = useState(false);
+  const [batchAction, setBatchAction] = useState<BatchOperationAction>('csRefund');
 
   const loadCases = async () => {
     setLoading(true);
@@ -47,7 +53,40 @@ export default function CaseList() {
 
   const handleReset = () => {
     setFilter({});
+    setSelectedIds(new Set());
   };
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === csArbitrationCases.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(csArbitrationCases.map(c => c.id)));
+    }
+  };
+
+  const handleSelectCase = (caseId: number) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(caseId)) {
+      newSelected.delete(caseId);
+    } else {
+      newSelected.add(caseId);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const openBatchModal = (action: BatchOperationAction) => {
+    setBatchAction(action);
+    setBatchModalOpen(true);
+  };
+
+  const handleBatchSuccess = (result: BatchExecuteResponse) => {
+    loadCases();
+    setSelectedIds(new Set());
+  };
+
+  const csArbitrationCases = cases.filter(c => c.status === 'csArbitration');
+  const selectedCases = cases.filter(c => selectedIds.has(c.id));
+  const selectedTotalAmount = selectedCases.reduce((sum, c) => sum + c.refundAmount, 0);
 
   return (
     <div className="space-y-6">
@@ -116,7 +155,68 @@ export default function CaseList() {
               新建申请
             </button>
           )}
+
+          {user?.role === 'cs' && csArbitrationCases.length > 0 && (
+            <>
+              <button
+                onClick={handleSelectAll}
+                className="flex items-center gap-2 px-4 py-2.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all border border-gray-200"
+              >
+                {selectedIds.size === csArbitrationCases.length ? (
+                  <CheckSquare className="w-4 h-4 text-blue-600" />
+                ) : (
+                  <Square className="w-4 h-4" />
+                )}
+                {selectedIds.size === csArbitrationCases.length ? '取消全选' : '全选待仲裁'}
+              </button>
+
+              <button
+                onClick={() => openBatchModal('csRefund')}
+                disabled={selectedIds.size === 0}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium rounded-xl shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                <CheckCircle className="w-4 h-4" />
+                批量同意退款
+              </button>
+
+              <button
+                onClick={() => openBatchModal('csReject')}
+                disabled={selectedIds.size === 0}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-medium rounded-xl shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                <XCircle className="w-4 h-4" />
+                批量驳回
+              </button>
+
+              <button
+                onClick={() => navigate('/batch')}
+                className="flex items-center gap-2 px-4 py-2.5 text-blue-600 hover:bg-blue-50 rounded-xl transition-all border border-blue-200"
+              >
+                <Layers className="w-4 h-4" />
+                批量历史
+              </button>
+            </>
+          )}
         </div>
+
+        {user?.role === 'cs' && selectedIds.size > 0 && (
+          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="text-blue-700 font-medium">
+                已选择 <span className="text-xl font-bold">{selectedIds.size}</span> 笔案件
+              </span>
+              <span className="text-blue-600">
+                合计金额：<span className="font-bold">¥{selectedTotalAmount.toFixed(2)}</span>
+              </span>
+            </div>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
+            >
+              清空选择
+            </button>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -138,17 +238,42 @@ export default function CaseList() {
           {cases.map((caseItem, index) => (
             <div
               key={caseItem.id}
-              className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-lg hover:border-blue-200 transition-all duration-300 cursor-pointer group"
+              className={`bg-white rounded-2xl shadow-sm border p-5 hover:shadow-lg transition-all duration-300 ${
+                user?.role === 'cs' && caseItem.status === 'csArbitration'
+                  ? 'cursor-pointer group border-gray-100 hover:border-blue-200'
+                  : 'border-gray-100 cursor-pointer hover:border-blue-200'
+              } ${
+                selectedIds.has(caseItem.id)
+                  ? 'ring-2 ring-blue-500 border-blue-500'
+                  : ''
+              }`}
               style={{ animationDelay: `${index * 50}ms` }}
               onClick={() => navigate(`/cases/${caseItem.id}`)}
             >
               <div className="flex items-start justify-between mb-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <TypeBadge type={caseItem.caseType} />
-                    <StatusBadge status={caseItem.status} />
+                <div className="flex items-start gap-3">
+                  {user?.role === 'cs' && caseItem.status === 'csArbitration' && (
+                    <div
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelectCase(caseItem.id);
+                      }}
+                      className="mt-1 cursor-pointer"
+                    >
+                      {selectedIds.has(caseItem.id) ? (
+                        <CheckSquare className="w-5 h-5 text-blue-600" />
+                      ) : (
+                        <Square className="w-5 h-5 text-gray-300 hover:text-gray-400" />
+                      )}
+                    </div>
+                  )}
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <TypeBadge type={caseItem.caseType} />
+                      <StatusBadge status={caseItem.status} />
+                    </div>
+                    <p className="text-lg font-bold text-gray-800">{caseItem.orderNo}</p>
                   </div>
-                  <p className="text-lg font-bold text-gray-800">{caseItem.orderNo}</p>
                 </div>
                 <span className="text-lg font-bold text-blue-600">¥{caseItem.refundAmount.toFixed(2)}</span>
               </div>
@@ -178,6 +303,14 @@ export default function CaseList() {
           ))}
         </div>
       )}
+
+      <BatchOperationModal
+        isOpen={batchModalOpen}
+        onClose={() => setBatchModalOpen(false)}
+        selectedCases={selectedCases}
+        action={batchAction}
+        onSuccess={handleBatchSuccess}
+      />
     </div>
   );
 }

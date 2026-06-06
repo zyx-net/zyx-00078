@@ -7,7 +7,14 @@ import {
   Case,
   CaseDetail,
   CaseListFilter,
-  User
+  User,
+  BatchPreviewRequest,
+  BatchPreviewResponse,
+  BatchExecuteRequest,
+  BatchExecuteResponse,
+  BatchOperation,
+  BatchDetail,
+  BatchListFilter
 } from '../../shared/types.js';
 
 const BASE_URL = '/api';
@@ -133,6 +140,64 @@ export async function exportRefundsCSV(
   const a = document.createElement('a');
   a.href = url;
   a.download = `refund_list_${startDate}_${endDate}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}
+
+export async function previewBatch(
+  data: BatchPreviewRequest): Promise<ApiResponse<BatchPreviewResponse>> {
+  return request<BatchPreviewResponse>('/batch/preview', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
+export async function executeBatch(
+  data: BatchExecuteRequest): Promise<ApiResponse<BatchExecuteResponse>> {
+  return request<BatchExecuteResponse>('/batch/execute', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
+export async function getBatches(
+  filter: BatchListFilter = {}
+): Promise<ApiResponse<BatchOperation[]>> {
+  const params = new URLSearchParams();
+  if (filter.startDate) params.append('startDate', filter.startDate);
+  if (filter.endDate) params.append('endDate', filter.endDate);
+  if (filter.action) params.append('action', filter.action);
+
+  const query = params.toString();
+  return request<BatchOperation[]>(`/batch${query ? `?${query}` : ''}`);
+}
+
+export async function getBatchDetail(
+  batchIdOrNo: string
+): Promise<ApiResponse<BatchDetail>> {
+  return request<BatchDetail>(`/batch/${batchIdOrNo}`);
+}
+
+export async function exportBatchCSV(
+  batchId: number
+): Promise<void> {
+  const token = getToken();
+  const response = await fetch(
+    `${BASE_URL}/batch/${batchId}/export`,
+    {
+      headers: {
+        'Authorization': `Bearer ${token || ''}`
+      }
+    }
+  );
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `batch_${batchId}_${Date.now()}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   PlusCircle,
   FileDown,
+  Layers,
   LogOut,
   User,
   Menu,
@@ -30,6 +31,12 @@ const menuItems = [
     path: '/export',
     label: '退款导出',
     icon: FileDown,
+    roles: ['cs']
+  },
+  {
+    path: '/batch',
+    label: '批量操作历史',
+    icon: Layers,
     roles: ['cs']
   }
 ];
