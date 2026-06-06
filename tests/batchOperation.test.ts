@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import { db, initDatabase } from '../api/db/index.js';
 import {
   BatchExecuteResponse,
@@ -14,10 +15,13 @@ import {
   exportBatchCSV,
   exportRevokeBatchCSV
 } from '../api/services/batchService.js';
+import { login as authLogin } from '../api/services/authService.js';
 
 function resetDatabase() {
   db.exec('DELETE FROM batch_revoke_items');
   db.exec('DELETE FROM batch_revoke_audits');
+  db.exec('DELETE FROM rule_audit_logs');
+  db.exec('DELETE FROM rule_hit_records');
   db.exec('DELETE FROM evidences');
   db.exec('DELETE FROM case_versions');
   db.exec('DELETE FROM batch_items');
@@ -113,19 +117,18 @@ function createTestCases() {
 }
 
 function login(username: string, password: string): { token: string; user: { id: number; name: string; role: 'cs' | 'merchant' | 'leader' } } {
-  const stmt = db.prepare('SELECT * FROM users WHERE username = ?');
-  const user = stmt.get(username) as { id: number; username: string; name: string; role: 'cs' | 'merchant' | 'leader'; passwordHash: string } | undefined;
+  const result = authLogin(username, password);
   
-  if (!user) {
-    throw new Error('用户不存在');
+  if (!result) {
+    throw new Error(`登录失败: 用户名 ${username} 或密码错误`);
   }
 
   return {
-    token: 'test-token',
+    token: result.token,
     user: {
-      id: user.id,
-      name: user.name,
-      role: user.role
+      id: result.user.id,
+      name: result.user.name,
+      role: result.user.role as 'cs' | 'merchant' | 'leader'
     }
   };
 }

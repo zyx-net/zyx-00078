@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import { db, initDatabase } from '../api/db/index.js';
 import {
   ERROR_CODES,
@@ -28,6 +29,7 @@ import {
   getAllAuditLogs,
   getCsList
 } from '../api/services/ruleService.js';
+import { login as authLogin } from '../api/services/authService.js';
 import { createCase } from '../api/services/caseService.js';
 
 function resetRuleDatabase() {
@@ -53,11 +55,13 @@ function resetAllDatabase() {
   db.exec('DELETE FROM users');
 }
 
+const TEST_PASSWORD_HASH = bcrypt.hashSync('123456', 10);
+
 function createTestUser(id: number, username: string, name: string, role: string) {
   db.prepare(`
     INSERT OR REPLACE INTO users (id, username, name, role, passwordHash, createdAt)
     VALUES (?, ?, ?, ?, ?, datetime('now'))
-  `).run(id, username, name, role, '$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW');
+  `).run(id, username, name, role, TEST_PASSWORD_HASH);
 }
 
 function login(userId: number): { id: number; name: string; role: 'cs' | 'merchant' | 'leader' } {
@@ -132,10 +136,43 @@ console.log('\n========================================');
 console.log('  售后仲裁规则配置 - 自动化测试');
 console.log('========================================');
 
-const csUser = login(3);
-const csUser2 = login(4);
-const merchantUser = login(2);
-const leaderUser = login(1);
+console.log('\n=== 回归测试: 真实账号登录验证 ===');
+const testAccounts = [
+  { username: 'leader1', password: '123456', role: 'leader', name: '李团长' },
+  { username: 'merchant1', password: '123456', role: 'merchant', name: '张商家' },
+  { username: 'cs1', password: '123456', role: 'cs', name: '王客服' }
+];
+
+for (const account of testAccounts) {
+  const result = authLogin(account.username, account.password);
+  if (!result) {
+    throw new Error(`登录验证失败: ${account.username} / ${account.password}`);
+  }
+  assert(result.user.username === account.username, `用户名应该匹配: ${account.username}`);
+  assert(result.user.role === account.role, `角色应该匹配: ${account.role}`);
+  assert(result.user.name === account.name, `姓名应该匹配: ${account.name}`);
+  assert(result.token.length > 0, `应该返回有效的token: ${account.username}`);
+  console.log(`✅ ${account.name} (${account.username}) 登录成功，token 有效`);
+}
+console.log('✅ 所有账号登录验证通过\n');
+
+function loginWithCredentials(username: string, password: string) {
+  const result = authLogin(username, password);
+  if (!result) {
+    throw new Error(`登录失败: ${username}`);
+  }
+  return result;
+}
+
+const csLoginResult = loginWithCredentials('cs1', '123456');
+const cs2LoginResult = loginWithCredentials('cs2', '123456');
+const merchantLoginResult = loginWithCredentials('merchant1', '123456');
+const leaderLoginResult = loginWithCredentials('leader1', '123456');
+
+const csUser = { id: csLoginResult.user.id, name: csLoginResult.user.name, role: csLoginResult.user.role as 'cs' | 'merchant' | 'leader', token: csLoginResult.token };
+const csUser2 = { id: cs2LoginResult.user.id, name: cs2LoginResult.user.name, role: cs2LoginResult.user.role as 'cs' | 'merchant' | 'leader', token: cs2LoginResult.token };
+const merchantUser = { id: merchantLoginResult.user.id, name: merchantLoginResult.user.name, role: merchantLoginResult.user.role as 'cs' | 'merchant' | 'leader', token: merchantLoginResult.token };
+const leaderUser = { id: leaderLoginResult.user.id, name: leaderLoginResult.user.name, role: leaderLoginResult.user.role as 'cs' | 'merchant' | 'leader', token: leaderLoginResult.token };
 
 let passed = 0;
 let failed = 0;
@@ -1063,6 +1100,115 @@ if (runTest('27. 并发修改-版本冲突双重验证', () => {
   const ruleAfter = db.prepare('SELECT * FROM arbitration_rules WHERE id = ?').get(ruleId) as any;
   assert(ruleAfter.remark === '其他用户已修改', '规则内容应该保持其他用户的修改');
   assert(ruleAfter.version === originalVersion + 1, '版本应该保持不变');
+})) { passed++; } else { failed++; }
+
+if (runTest('28. 回归测试-客服能维护仲裁规则', () => {
+  resetRuleDatabase();
+  
+  const ruleData: CreateRuleRequest = {
+    caseType: 'outOfStock',
+    responsibleParty: 'platform',
+    refundAmountMin: 0,
+    refundAmountMax: 500,
+    merchantId: null,
+    priority: 10,
+    suggestedAction: 'csRefund',
+    assignedCsId: csUser.id,
+    remark: '回归测试-客服维护规则'
+  };
+  
+  const createResult = createRule(ruleData, csUser.id, csUser.name);
+  assert(createResult.success === true, '客服应该能创建规则');
+  
+  const ruleId = createResult.data!.id;
+  
+  const updateData: UpdateRuleRequest = {
+    ...ruleData,
+    priority: 10,
+    remark: '回归测试-客服更新规则',
+    version: createResult.data!.version
+  };
+  
+  const updateResult = updateRule(ruleId, updateData, csUser.id, csUser.name);
+  assert(updateResult.success === true, '客服应该能更新规则');
+  
+  const disableResult = disableRule(ruleId, csUser.id, csUser.name);
+  assert(disableResult.success === true, '客服应该能禁用规则');
+  
+  const enableResult = enableRule(ruleId, csUser.id, csUser.name);
+  assert(enableResult.success === true, '客服应该能启用规则');
+  
+  const deleteResult = deleteRule(ruleId, csUser.id, csUser.name);
+  assert(deleteResult.success === true, '客服应该能删除规则');
+  
+  const rulesAfter = getRuleList();
+  assert(rulesAfter.success === true, '应该能获取规则列表');
+  assert(rulesAfter.data!.length === 0, '规则应该被删除');
+})) { passed++; } else { failed++; }
+
+if (runTest('29. 回归测试-团长和商家不能管理规则但能查看建议', () => {
+  resetRuleDatabase();
+  
+  const ruleData: CreateRuleRequest = {
+    caseType: 'damaged',
+    responsibleParty: 'merchant',
+    refundAmountMin: 0,
+    refundAmountMax: 100,
+    merchantId: merchantUser.id,
+    priority: 1,
+    suggestedAction: 'csRefund',
+    assignedCsId: csUser.id,
+    remark: '回归测试-权限验证'
+  };
+  
+  const createResult = createRule(ruleData, csUser.id, csUser.name);
+  assert(createResult.success === true, '客服创建规则应该成功');
+  
+  const createByLeader = createRule(ruleData, leaderUser.id, leaderUser.name);
+  assert(createByLeader.success === false, '团长不能创建规则');
+  assert(createByLeader.error!.message.includes('只有客服角色'), '错误信息应该说明只有客服可以创建');
+  
+  const createByMerchant = createRule(ruleData, merchantUser.id, merchantUser.name);
+  assert(createByMerchant.success === false, '商家不能创建规则');
+  
+  const caseId = createTestCase('damaged', 'merchant', 50, merchantUser.id, leaderUser.id, leaderUser.name);
+  const caseInfo = db.prepare('SELECT * FROM cases WHERE id = ?').get(caseId) as any;
+  matchAndRecordRule(caseInfo, merchantUser.id, merchantUser.name, 'merchant');
+  
+  const leaderView = getCaseRuleInfo(caseId);
+  assert(leaderView.success === true, '团长应该能查看案件命中结果');
+  assert(leaderView.data !== null, '团长应该能看到命中结果');
+  assert(leaderView.data!.suggestedAction !== undefined, '团长应该能看到建议动作');
+  assert(leaderView.data!.hitReason !== undefined, '团长应该能看到命中原因');
+  
+  const merchantView = getCaseRuleInfo(caseId);
+  assert(merchantView.success === true, '商家应该能查看案件命中结果');
+  assert(merchantView.data !== null, '商家应该能看到命中结果');
+  
+  const overrideByLeader = overrideRuleHitByCaseId(caseId, '团长尝试覆盖', leaderUser.id, leaderUser.name);
+  assert(overrideByLeader.success === false, '团长不能覆盖规则');
+  
+  const overrideByMerchant = overrideRuleHitByCaseId(caseId, '商家尝试覆盖', merchantUser.id, merchantUser.name);
+  assert(overrideByMerchant.success === false, '商家不能覆盖规则');
+})) { passed++; } else { failed++; }
+
+if (runTest('30. 回归测试-密码哈希修复机制验证', () => {
+  const invalidHash = '$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW';
+  
+  db.prepare('INSERT OR REPLACE INTO users (id, username, name, role, passwordHash) VALUES (?, ?, ?, ?, ?)').run(
+    999, 'testuser', '测试用户', 'cs', invalidHash
+  );
+  
+  const failedLogin = authLogin('testuser', '123456');
+  assert(failedLogin === null, '使用无效哈希的用户应该登录失败');
+  
+  initDatabase();
+  
+  const fixedLogin = authLogin('testuser', '123456');
+  assert(fixedLogin !== null, '修复后用户应该能登录成功');
+  assert(fixedLogin.user.username === 'testuser', '用户名应该正确');
+  
+  db.prepare('DELETE FROM users WHERE id = ?').run(999);
 })) { passed++; } else { failed++; }
 
 console.log('\n========================================');

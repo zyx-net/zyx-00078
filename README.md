@@ -76,6 +76,33 @@ npm run check
 
 **登录地址**：http://localhost:5173/login
 
+### 账号登录验证
+首次启动服务时，系统会自动初始化演示账号。如果遇到登录失败（401错误），系统会自动修复密码哈希兼容性问题。
+
+**验证登录接口（可选）**：
+```bash
+curl -X POST http://localhost:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"cs1","password":"123456"}'
+```
+
+**预期返回**：
+```json
+{
+  "success": true,
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "user": {
+      "id": 3,
+      "username": "cs1",
+      "name": "王客服",
+      "role": "cs",
+      "createdAt": "2026-06-06T07:00:00.000Z"
+    }
+  }
+}
+```
+
 ---
 
 ## 四、核心功能
@@ -1332,7 +1359,7 @@ curl -X POST http://localhost:3001/api/cases/{caseId}/action \
 
 ---
 
-## 十三、常见问题
+## 十五、常见问题
 
 ### Q: 启动后数据库文件在哪？
 A: 在项目根目录的 `data/database.sqlite`
