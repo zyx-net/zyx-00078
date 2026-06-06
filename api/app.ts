@@ -17,6 +17,7 @@ import exportRoutes from './routes/export.js'
 import batchRoutes from './routes/batch.js'
 import ruleRoutes from './routes/rules.js'
 import qualityInspectionRoutes from './routes/qualityInspection.js'
+import compensationRoutes from './routes/compensation.js'
 
 // for esm mode
 const __filename = fileURLToPath(import.meta.url)
@@ -40,6 +41,7 @@ app.use('/api/export', exportRoutes)
 app.use('/api/batch', batchRoutes)
 app.use('/api/rules', ruleRoutes)
 app.use('/api/quality-inspection', qualityInspectionRoutes)
+app.use('/api/compensation', compensationRoutes)
 
 /**
  * health

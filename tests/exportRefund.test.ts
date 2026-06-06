@@ -24,13 +24,20 @@ function setDb(dbInstance: any) {
 }
 
 function resetDatabase() {
+  testDb.exec('DELETE FROM compensation_commitment_operation_logs');
+  testDb.exec('DELETE FROM compensation_commitments');
+  testDb.exec('DELETE FROM quality_inspection_operation_logs');
+  testDb.exec('DELETE FROM quality_inspection_reviews');
+  testDb.exec('DELETE FROM quality_inspection_items');
+  testDb.exec('DELETE FROM quality_inspections');
   testDb.exec('DELETE FROM export_records');
-  testDb.exec('DELETE FROM rule_audit_logs');
-  testDb.exec('DELETE FROM rule_hit_records');
-  testDb.exec('DELETE FROM evidences');
-  testDb.exec('DELETE FROM case_versions');
   testDb.exec('DELETE FROM batch_revoke_items');
   testDb.exec('DELETE FROM batch_revoke_audits');
+  testDb.exec('DELETE FROM rule_audit_logs');
+  testDb.exec('DELETE FROM rule_hit_records');
+  testDb.exec('DELETE FROM arbitration_rules');
+  testDb.exec('DELETE FROM evidences');
+  testDb.exec('DELETE FROM case_versions');
   testDb.exec('DELETE FROM batch_items');
   testDb.exec('DELETE FROM batch_operations');
   testDb.exec('DELETE FROM cases');

@@ -9,7 +9,8 @@ import {
   Menu,
   X,
   Settings,
-  History
+  History,
+  HandCoins
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/store/authStore';
@@ -52,6 +53,12 @@ const menuItems = [
     label: '规则配置',
     icon: Settings,
     roles: ['cs']
+  },
+  {
+    path: '/compensation',
+    label: '赔付承诺',
+    icon: HandCoins,
+    roles: ['leader', 'merchant', 'cs']
   }
 ];
 

@@ -19,6 +19,8 @@ import {
 import { login as authLogin } from '../api/services/authService.js';
 
 function resetDatabase() {
+  db.exec('DELETE FROM compensation_commitment_operation_logs');
+  db.exec('DELETE FROM compensation_commitments');
   db.exec('DELETE FROM quality_inspection_operation_logs');
   db.exec('DELETE FROM quality_inspection_reviews');
   db.exec('DELETE FROM quality_inspection_items');

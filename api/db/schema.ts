@@ -342,6 +342,74 @@ CREATE INDEX IF NOT EXISTS idx_quality_inspection_logs_inspection ON quality_ins
 CREATE INDEX IF NOT EXISTS idx_quality_inspection_logs_item ON quality_inspection_operation_logs(inspectionItemId);
 CREATE INDEX IF NOT EXISTS idx_quality_inspection_logs_operation ON quality_inspection_operation_logs(operationType);
 CREATE INDEX IF NOT EXISTS idx_quality_inspection_logs_created ON quality_inspection_operation_logs(createdAt);
+
+CREATE TABLE IF NOT EXISTS compensation_commitments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  commitmentNo TEXT UNIQUE NOT NULL,
+  caseId INTEGER NOT NULL,
+  orderNo TEXT NOT NULL,
+  merchantId INTEGER NOT NULL,
+  merchantName TEXT NOT NULL,
+  leaderId INTEGER NOT NULL,
+  leaderName TEXT NOT NULL,
+  type TEXT NOT NULL CHECK(type IN ('cash', 'coupon', 'reship', 'offline')),
+  amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+  couponName TEXT,
+  couponValue DECIMAL(10,2),
+  productName TEXT,
+  productQuantity INTEGER,
+  offlineDescription TEXT,
+  dueDate TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pendingFulfillment'
+    CHECK(status IN ('pendingFulfillment', 'fulfilled', 'overdue', 'cancelled')),
+  remark TEXT,
+  attachment TEXT,
+  cancelReason TEXT,
+  fulfilledBy INTEGER,
+  fulfilledByName TEXT,
+  fulfilledAt DATETIME,
+  cancelledBy INTEGER,
+  cancelledByName TEXT,
+  cancelledAt DATETIME,
+  version INTEGER NOT NULL DEFAULT 1,
+  createdBy INTEGER NOT NULL,
+  createdByName TEXT NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (caseId) REFERENCES cases(id),
+  FOREIGN KEY (merchantId) REFERENCES users(id),
+  FOREIGN KEY (leaderId) REFERENCES users(id),
+  FOREIGN KEY (createdBy) REFERENCES users(id),
+  FOREIGN KEY (fulfilledBy) REFERENCES users(id),
+  FOREIGN KEY (cancelledBy) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS compensation_commitment_operation_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  commitmentId INTEGER NOT NULL,
+  operationType TEXT NOT NULL
+    CHECK(operationType IN ('create', 'update', 'fulfill', 'cancel', 'import')),
+  operatorId INTEGER NOT NULL,
+  operatorName TEXT NOT NULL,
+  operatorRole TEXT NOT NULL CHECK(operatorRole IN ('leader', 'merchant', 'cs')),
+  beforeChange TEXT,
+  afterChange TEXT,
+  remark TEXT,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (commitmentId) REFERENCES compensation_commitments(id),
+  FOREIGN KEY (operatorId) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_compensation_commitments_case ON compensation_commitments(caseId);
+CREATE INDEX IF NOT EXISTS idx_compensation_commitments_status ON compensation_commitments(status);
+CREATE INDEX IF NOT EXISTS idx_compensation_commitments_type ON compensation_commitments(type);
+CREATE INDEX IF NOT EXISTS idx_compensation_commitments_merchant ON compensation_commitments(merchantId);
+CREATE INDEX IF NOT EXISTS idx_compensation_commitments_leader ON compensation_commitments(leaderId);
+CREATE INDEX IF NOT EXISTS idx_compensation_commitments_created ON compensation_commitments(createdAt);
+CREATE INDEX IF NOT EXISTS idx_compensation_commitments_due ON compensation_commitments(dueDate);
+CREATE INDEX IF NOT EXISTS idx_compensation_logs_commitment ON compensation_commitment_operation_logs(commitmentId);
+CREATE INDEX IF NOT EXISTS idx_compensation_logs_operation ON compensation_commitment_operation_logs(operationType);
+CREATE INDEX IF NOT EXISTS idx_compensation_logs_created ON compensation_commitment_operation_logs(createdAt);
 `;
 
 export const INITIAL_USERS_SQL = `

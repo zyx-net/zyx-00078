@@ -33,6 +33,8 @@ import { login as authLogin } from '../api/services/authService.js';
 import { createCase } from '../api/services/caseService.js';
 
 function resetRuleDatabase() {
+  db.exec('DELETE FROM compensation_commitment_operation_logs');
+  db.exec('DELETE FROM compensation_commitments');
   db.exec('DELETE FROM rule_audit_logs');
   db.exec('DELETE FROM rule_hit_records');
   db.exec('DELETE FROM arbitration_rules');
@@ -42,6 +44,13 @@ function resetRuleDatabase() {
 }
 
 function resetAllDatabase() {
+  db.exec('DELETE FROM compensation_commitment_operation_logs');
+  db.exec('DELETE FROM compensation_commitments');
+  db.exec('DELETE FROM quality_inspection_operation_logs');
+  db.exec('DELETE FROM quality_inspection_reviews');
+  db.exec('DELETE FROM quality_inspection_items');
+  db.exec('DELETE FROM quality_inspections');
+  db.exec('DELETE FROM export_records');
   db.exec('DELETE FROM rule_audit_logs');
   db.exec('DELETE FROM rule_hit_records');
   db.exec('DELETE FROM arbitration_rules');

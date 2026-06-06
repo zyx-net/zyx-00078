@@ -719,3 +719,135 @@ export const QUALITY_INSPECTION_ERROR_CODES = {
   IMPORT_FORMAT_ERROR: 'IMPORT_FORMAT_ERROR',
   NO_PERMISSION: 'NO_PERMISSION'
 } as const;
+
+export type CompensationCommitmentStatus = 'pendingFulfillment' | 'fulfilled' | 'overdue' | 'cancelled';
+export type CompensationCommitmentType = 'cash' | 'coupon' | 'reship' | 'offline';
+
+export const COMPENSATION_COMMITMENT_STATUS_LABELS: Record<CompensationCommitmentStatus, string> = {
+  pendingFulfillment: '待履约',
+  fulfilled: '已履约',
+  overdue: '已逾期',
+  cancelled: '已取消'
+};
+
+export const COMPENSATION_COMMITMENT_TYPE_LABELS: Record<CompensationCommitmentType, string> = {
+  cash: '现金补偿',
+  coupon: '优惠券',
+  reship: '补寄商品',
+  offline: '线下承诺'
+};
+
+export interface CompensationCommitment {
+  id: number;
+  commitmentNo: string;
+  caseId: number;
+  orderNo: string;
+  merchantId: number;
+  merchantName: string;
+  leaderId: number;
+  leaderName: string;
+  type: CompensationCommitmentType;
+  amount: number;
+  couponName?: string;
+  couponValue?: number;
+  productName?: string;
+  productQuantity?: number;
+  offlineDescription?: string;
+  dueDate: string;
+  status: CompensationCommitmentStatus;
+  remark?: string;
+  attachment?: string;
+  cancelReason?: string;
+  fulfilledBy?: number;
+  fulfilledByName?: string;
+  fulfilledAt?: string;
+  cancelledBy?: number;
+  cancelledByName?: string;
+  cancelledAt?: string;
+  version: number;
+  createdBy: number;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CompensationCommitmentOperationLog {
+  id: number;
+  commitmentId: number;
+  operationType: 'create' | 'update' | 'fulfill' | 'cancel' | 'import';
+  operatorId: number;
+  operatorName: string;
+  operatorRole: UserRole;
+  beforeChange: string | null;
+  afterChange: string | null;
+  remark: string | null;
+  createdAt: string;
+}
+
+export interface CreateCompensationCommitmentRequest {
+  caseId: number;
+  type: CompensationCommitmentType;
+  amount: number;
+  couponName?: string;
+  couponValue?: number;
+  productName?: string;
+  productQuantity?: number;
+  offlineDescription?: string;
+  dueDate: string;
+  remark?: string;
+  attachment?: string;
+}
+
+export interface UpdateCompensationCommitmentRequest extends CreateCompensationCommitmentRequest {
+  version: number;
+}
+
+export interface CancelCompensationCommitmentRequest {
+  version: number;
+  cancelReason: string;
+}
+
+export interface FulfillCompensationCommitmentRequest {
+  version: number;
+  remark?: string;
+}
+
+export interface CompensationCommitmentListFilter {
+  status?: CompensationCommitmentStatus;
+  type?: CompensationCommitmentType;
+  caseId?: number;
+  startDate?: string;
+  endDate?: string;
+  keyword?: string;
+}
+
+export interface CompensationCommitmentSummary {
+  id: number;
+  commitmentNo: string;
+  caseId: number;
+  orderNo: string;
+  type: CompensationCommitmentType;
+  amount: number;
+  status: CompensationCommitmentStatus;
+  dueDate: string;
+  createdByName: string;
+  createdAt: string;
+}
+
+export interface CompensationImportResult {
+  successCount: number;
+  failedCount: number;
+  errors: Array<{ row: number; error: string }>;
+  warnings: Array<{ row: number; warning: string }>;
+}
+
+export const COMPENSATION_ERROR_CODES = {
+  COMMITMENT_NOT_FOUND: 'COMMITMENT_NOT_FOUND',
+  VERSION_CONFLICT: 'VERSION_CONFLICT',
+  INVALID_STATUS_TRANSITION: 'INVALID_STATUS_TRANSITION',
+  NO_PERMISSION: 'NO_PERMISSION',
+  IMPORT_FORMAT_ERROR: 'IMPORT_FORMAT_ERROR',
+  INVALID_PARAMS: 'INVALID_PARAMS',
+  CASE_NOT_FOUND: 'CASE_NOT_FOUND',
+  NOT_OWNED: 'NOT_OWNED'
+} as const;

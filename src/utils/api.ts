@@ -404,3 +404,129 @@ export async function getAllRuleAuditLogs(filter: {
   const query = params.toString();
   return request<RuleAuditLog[]>(`/rules/audit-logs/all${query ? `?${query}` : ''}`);
 }
+
+import {
+  CompensationCommitment,
+  CompensationCommitmentSummary,
+  CompensationCommitmentListFilter,
+  CreateCompensationCommitmentRequest,
+  UpdateCompensationCommitmentRequest,
+  CancelCompensationCommitmentRequest,
+  FulfillCompensationCommitmentRequest,
+  CompensationImportResult,
+  CompensationCommitmentOperationLog
+} from '../../shared/types.js';
+
+export async function getCompensations(
+  filter: CompensationCommitmentListFilter = {}
+): Promise<ApiResponse<CompensationCommitment[] | CompensationCommitmentSummary[]>> {
+  const params = new URLSearchParams();
+  if (filter.status) params.append('status', filter.status);
+  if (filter.type) params.append('type', filter.type);
+  if (filter.caseId) params.append('caseId', filter.caseId.toString());
+  if (filter.startDate) params.append('startDate', filter.startDate);
+  if (filter.endDate) params.append('endDate', filter.endDate);
+  if (filter.keyword) params.append('keyword', filter.keyword);
+
+  const query = params.toString();
+  return request<CompensationCommitment[] | CompensationCommitmentSummary[]>(`/compensation${query ? `?${query}` : ''}`);
+}
+
+export async function getCompensationDetail(
+  id: number
+): Promise<ApiResponse<CompensationCommitment & { operationLogs: CompensationCommitmentOperationLog[] }>> {
+  return request<CompensationCommitment & { operationLogs: CompensationCommitmentOperationLog[] }>(`/compensation/${id}`);
+}
+
+export async function getCompensationsByCase(
+  caseId: number
+): Promise<ApiResponse<CompensationCommitment[]>> {
+  return request<CompensationCommitment[]>(`/compensation/case/${caseId}`);
+}
+
+export async function createCompensation(
+  data: CreateCompensationCommitmentRequest
+): Promise<ApiResponse<CompensationCommitment>> {
+  return request<CompensationCommitment>('/compensation', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
+export async function updateCompensation(
+  id: number,
+  data: UpdateCompensationCommitmentRequest
+): Promise<ApiResponse<CompensationCommitment>> {
+  return request<CompensationCommitment>(`/compensation/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data)
+  });
+}
+
+export async function fulfillCompensation(
+  id: number,
+  data: FulfillCompensationCommitmentRequest
+): Promise<ApiResponse<CompensationCommitment>> {
+  return request<CompensationCommitment>(`/compensation/${id}/fulfill`, {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
+export async function cancelCompensation(
+  id: number,
+  data: CancelCompensationCommitmentRequest
+): Promise<ApiResponse<CompensationCommitment>> {
+  return request<CompensationCommitment>(`/compensation/${id}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
+export async function exportCompensationsCSV(
+  filter: CompensationCommitmentListFilter = {}
+): Promise<void> {
+  const token = getToken();
+  const params = new URLSearchParams();
+  if (filter.status) params.append('status', filter.status);
+  if (filter.type) params.append('type', filter.type);
+  if (filter.caseId) params.append('caseId', filter.caseId.toString());
+  if (filter.startDate) params.append('startDate', filter.startDate);
+  if (filter.endDate) params.append('endDate', filter.endDate);
+  if (filter.keyword) params.append('keyword', filter.keyword);
+
+  const query = params.toString();
+  const response = await fetch(
+    `${BASE_URL}/compensation/export/csv${query ? `?${query}` : ''}`,
+    {
+      headers: {
+        'Authorization': `Bearer ${token || ''}`
+      }
+    }
+  );
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `compensation_commitments_${Date.now()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}
+
+export async function importCompensationsCSV(
+  csvContent: string
+): Promise<ApiResponse<CompensationImportResult>> {
+  return request<CompensationImportResult>('/compensation/import/csv', {
+    method: 'POST',
+    body: JSON.stringify({ csvContent })
+  });
+}
+
+export async function getCompensationLogs(
+  id: number
+): Promise<ApiResponse<CompensationCommitmentOperationLog[]>> {
+  return request<CompensationCommitmentOperationLog[]>(`/compensation/${id}/logs`);
+}

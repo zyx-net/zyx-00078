@@ -1,4 +1,4 @@
-import { CaseStatus, CaseType, ResponsibleParty, CaseAction, USER_ROLE_LABELS, CASE_STATUS_LABELS, CASE_TYPE_LABELS, RESPONSIBLE_PARTY_LABELS, CASE_ACTION_LABELS } from '../../shared/types';
+import { CaseStatus, CaseType, ResponsibleParty, CaseAction, UserRole, CompensationCommitmentStatus, CompensationCommitmentType, USER_ROLE_LABELS, CASE_STATUS_LABELS, CASE_TYPE_LABELS, RESPONSIBLE_PARTY_LABELS, CASE_ACTION_LABELS, COMPENSATION_COMMITMENT_STATUS_LABELS, COMPENSATION_COMMITMENT_TYPE_LABELS } from '../../shared/types';
 
 interface StatusBadgeProps {
   status: CaseStatus;
@@ -71,5 +71,43 @@ export function ActionBadge({ action, role }: ActionBadgeProps) {
         {USER_ROLE_LABELS[role as keyof typeof USER_ROLE_LABELS]}
       </span>
     </div>
+  );
+}
+
+interface CompensationStatusBadgeProps {
+  status: CompensationCommitmentStatus;
+}
+
+export function CompensationStatusBadge({ status }: CompensationStatusBadgeProps) {
+  const styles: Record<CompensationCommitmentStatus, string> = {
+    pendingFulfillment: 'bg-amber-100 text-amber-800 border-amber-200',
+    fulfilled: 'bg-green-100 text-green-800 border-green-200',
+    overdue: 'bg-red-100 text-red-800 border-red-200',
+    cancelled: 'bg-gray-100 text-gray-600 border-gray-200'
+  };
+
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${styles[status]}`}>
+      {COMPENSATION_COMMITMENT_STATUS_LABELS[status]}
+    </span>
+  );
+}
+
+interface CompensationTypeBadgeProps {
+  type: CompensationCommitmentType;
+}
+
+export function CompensationTypeBadge({ type }: CompensationTypeBadgeProps) {
+  const styles: Record<CompensationCommitmentType, string> = {
+    cash: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    coupon: 'bg-purple-50 text-purple-700 border-purple-200',
+    reship: 'bg-blue-50 text-blue-700 border-blue-200',
+    offline: 'bg-orange-50 text-orange-700 border-orange-200'
+  };
+
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${styles[type]}`}>
+      {COMPENSATION_COMMITMENT_TYPE_LABELS[type]}
+    </span>
   );
 }

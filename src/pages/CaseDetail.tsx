@@ -14,11 +14,13 @@ import {
   Send,
   Settings,
   History,
-  ShieldAlert
+  ShieldAlert,
+  HandCoins,
+  Plus
 } from 'lucide-react';
-import { getCaseDetail, executeCaseAction, getCaseRuleInfo, overrideRuleHit, getCaseRuleAuditLogs } from '@/utils/api';
+import { getCaseDetail, executeCaseAction, getCaseRuleInfo, overrideRuleHit, getCaseRuleAuditLogs, getCompensationsByCase, createCompensation, updateCompensation, fulfillCompensation, cancelCompensation } from '@/utils/api';
 import { useAuthStore } from '@/store/authStore';
-import { StatusBadge, TypeBadge, PartyBadge, ActionBadge } from '@/components/StatusBadge';
+import { StatusBadge, TypeBadge, PartyBadge, ActionBadge, CompensationStatusBadge, CompensationTypeBadge } from '@/components/StatusBadge';
 import {
   CaseDetail as CaseDetailType,
   CaseAction,
@@ -32,7 +34,14 @@ import {
   ArbitrationRule,
   RuleAuditLog,
   RULE_SUGGESTED_ACTION_LABELS,
-  RULE_OPERATION_TYPE_LABELS
+  RULE_OPERATION_TYPE_LABELS,
+  CompensationCommitment,
+  CompensationCommitmentType,
+  CompensationCommitmentStatus,
+  CreateCompensationCommitmentRequest,
+  UpdateCompensationCommitmentRequest,
+  COMPENSATION_COMMITMENT_TYPE_LABELS,
+  COMPENSATION_COMMITMENT_STATUS_LABELS
 } from '../../shared/types';
 
 interface StateTransition {
@@ -82,6 +91,29 @@ export default function CaseDetail() {
   const [overrideLoading, setOverrideLoading] = useState(false);
   const [showAuditLogsModal, setShowAuditLogsModal] = useState(false);
 
+  const [compensations, setCompensations] = useState<CompensationCommitment[]>([]);
+  const [compensationLoading, setCompensationLoading] = useState(false);
+  const [showCompensationModal, setShowCompensationModal] = useState(false);
+  const [editingCompensation, setEditingCompensation] = useState<CompensationCommitment | null>(null);
+  const [showFulfillModal, setShowFulfillModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [selectedCompensation, setSelectedCompensation] = useState<CompensationCommitment | null>(null);
+  const [fulfillRemark, setFulfillRemark] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
+  const [compensationForm, setCompensationForm] = useState<Partial<CreateCompensationCommitmentRequest>>({
+    caseId: 0,
+    type: 'cash',
+    amount: 0,
+    dueDate: '',
+    remark: '',
+    attachment: '',
+    couponName: '',
+    couponValue: 0,
+    productName: '',
+    productQuantity: 0,
+    offlineDetails: ''
+  });
+
   const loadCaseDetail = async () => {
     if (!id) return;
     setLoading(true);
@@ -122,8 +154,23 @@ export default function CaseDetail() {
     }
   };
 
+  const loadCompensations = async () => {
+    if (!id) return;
+    setCompensationLoading(true);
+    try {
+      const result = await getCompensationsByCase(parseInt(id));
+      if (result.code === 0 && result.data) {
+        setCompensations(result.data);
+      }
+    } catch (e) {
+      // ignore
+    } finally {
+      setCompensationLoading(false);
+    }
+  };
+
   const loadAllData = async () => {
-    await Promise.all([loadCaseDetail(), loadRuleInfo()]);
+    await Promise.all([loadCaseDetail(), loadRuleInfo(), loadCompensations()]);
   };
 
   useEffect(() => {
@@ -150,6 +197,188 @@ export default function CaseDetail() {
       setOverrideLoading(false);
     }
   };
+
+  const handleOpenCreateCompensation = () => {
+    setEditingCompensation(null);
+    setCompensationForm({
+      caseId: parseInt(id!),
+      type: 'cash',
+      amount: 0,
+      dueDate: '',
+      remark: '',
+      attachment: '',
+      couponName: '',
+      couponValue: 0,
+      productName: '',
+      productQuantity: 0,
+      offlineDetails: ''
+    });
+    setShowCompensationModal(true);
+  };
+
+  const handleOpenEditCompensation = (commitment: CompensationCommitment) => {
+    setEditingCompensation(commitment);
+    setCompensationForm({
+      caseId: commitment.caseId,
+      type: commitment.type,
+      amount: commitment.amount,
+      dueDate: commitment.dueDate || '',
+      remark: commitment.remark || '',
+      attachment: commitment.attachment || '',
+      couponName: commitment.couponName || '',
+      couponValue: commitment.couponValue || 0,
+      productName: commitment.productName || '',
+      productQuantity: commitment.productQuantity || 0,
+      offlineDetails: commitment.offlineDetails || ''
+    });
+    setShowCompensationModal(true);
+  };
+
+  const handleSubmitCompensation = async () => {
+    if (!compensationForm.dueDate) {
+      setError('请选择履约截止日期');
+      return;
+    }
+
+    if (compensationForm.type === 'coupon') {
+      if (!compensationForm.couponName) {
+        setError('请输入优惠券名称');
+        return;
+      }
+      if (!compensationForm.couponValue || compensationForm.couponValue <= 0) {
+        setError('请输入有效的优惠券面值');
+        return;
+      }
+    } else if (compensationForm.type === 'reship') {
+      if (!compensationForm.productName) {
+        setError('请输入补寄商品名称');
+        return;
+      }
+      if (!compensationForm.productQuantity || compensationForm.productQuantity <= 0) {
+        setError('请输入有效的商品数量');
+        return;
+      }
+    } else if (compensationForm.type === 'offline') {
+      if (!compensationForm.offlineDetails) {
+        setError('请输入线下承诺详情');
+        return;
+      }
+    }
+
+    setError('');
+    try {
+      if (editingCompensation) {
+        const response = await updateCompensation(editingCompensation.id, {
+          ...compensationForm as UpdateCompensationCommitmentRequest,
+          version: editingCompensation.version
+        });
+        if (response.code === 0) {
+          setSuccess('更新成功');
+          setShowCompensationModal(false);
+          loadCompensations();
+          setTimeout(() => setSuccess(''), 3000);
+        } else if (response.code === 40901) {
+          setError(`版本冲突：${response.message}，请刷新后重试`);
+          setTimeout(() => loadCompensations(), 1500);
+        } else {
+          setError(response.message || '更新失败');
+        }
+      } else {
+        const response = await createCompensation(compensationForm as CreateCompensationCommitmentRequest);
+        if (response.code === 0) {
+          setSuccess('创建成功');
+          setShowCompensationModal(false);
+          loadCompensations();
+          setTimeout(() => setSuccess(''), 3000);
+        } else {
+          setError(response.message || '创建失败');
+        }
+      }
+    } catch (error) {
+      setError('操作失败');
+    }
+  };
+
+  const handleOpenFulfillCompensation = (commitment: CompensationCommitment) => {
+    setSelectedCompensation(commitment);
+    setFulfillRemark('');
+    setShowFulfillModal(true);
+  };
+
+  const handleFulfillCompensation = async () => {
+    if (!selectedCompensation) return;
+    
+    try {
+      const response = await fulfillCompensation(selectedCompensation.id, {
+        remark: fulfillRemark,
+        version: selectedCompensation.version
+      });
+      if (response.code === 0) {
+        setSuccess('标记履约成功');
+        setShowFulfillModal(false);
+        loadCompensations();
+        setTimeout(() => setSuccess(''), 3000);
+      } else if (response.code === 40901) {
+        setError(`版本冲突：${response.message}，请刷新后重试`);
+        setTimeout(() => loadCompensations(), 1500);
+      } else {
+        setError(response.message || '操作失败');
+      }
+    } catch (error) {
+      setError('操作失败');
+    }
+  };
+
+  const handleOpenCancelCompensation = (commitment: CompensationCommitment) => {
+    setSelectedCompensation(commitment);
+    setCancelReason('');
+    setShowCancelModal(true);
+  };
+
+  const handleCancelCompensation = async () => {
+    if (!selectedCompensation) return;
+    if (!cancelReason.trim()) {
+      setError('请输入取消原因');
+      return;
+    }
+    
+    try {
+      const response = await cancelCompensation(selectedCompensation.id, {
+        cancelReason,
+        version: selectedCompensation.version
+      });
+      if (response.code === 0) {
+        setSuccess('取消成功');
+        setShowCancelModal(false);
+        loadCompensations();
+        setTimeout(() => setSuccess(''), 3000);
+      } else if (response.code === 40901) {
+        setError(`版本冲突：${response.message}，请刷新后重试`);
+        setTimeout(() => loadCompensations(), 1500);
+      } else {
+        setError(response.message || '操作失败');
+      }
+    } catch (error) {
+      setError('操作失败');
+    }
+  };
+
+  const getCompensationDisplayValue = (commitment: CompensationCommitment) => {
+    switch (commitment.type) {
+      case 'cash':
+        return `¥${commitment.amount.toFixed(2)}`;
+      case 'coupon':
+        return `${commitment.couponName || '-'} (¥${commitment.couponValue?.toFixed(2) || '0.00'})`;
+      case 'reship':
+        return `${commitment.productName || '-'} × ${commitment.productQuantity || 0}`;
+      case 'offline':
+        return commitment.offlineDetails || '-';
+      default:
+        return '-';
+    }
+  };
+
+  const isCS = user?.role === 'cs';
 
   if (!user || !caseData) {
     if (loading) {
@@ -481,6 +710,110 @@ export default function CaseDetail() {
               </div>
             </div>
           )}
+
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <HandCoins className="w-5 h-5 text-blue-600" />
+                赔付承诺
+              </h3>
+              {isCS && (
+                <button
+                  onClick={handleOpenCreateCompensation}
+                  className="px-3 py-1.5 text-sm text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors flex items-center gap-1"
+                >
+                  <Plus className="w-4 h-4" />
+                  新建承诺
+                </button>
+              )}
+            </div>
+
+            {compensationLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+              </div>
+            ) : compensations.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <HandCoins className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p>暂无赔付承诺记录</p>
+                {isCS && <p className="text-sm mt-1">点击上方按钮新建赔付承诺</p>}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {compensations.map((commitment) => (
+                  <div key={commitment.id} className="p-4 bg-gray-50 rounded-xl">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-sm text-blue-600">{commitment.commitmentNo}</span>
+                        <CompensationTypeBadge type={commitment.type} />
+                        <CompensationStatusBadge status={commitment.status} />
+                      </div>
+                      <span className="text-xs text-gray-500">v{commitment.version}</span>
+                    </div>
+                    
+                    <div className="mb-3">
+                      <p className="text-sm text-gray-500 mb-1">赔付内容</p>
+                      <p className="font-medium text-gray-800">{getCompensationDisplayValue(commitment)}</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mb-3">
+                      <div>
+                        <p className="text-xs text-gray-500">履约截止</p>
+                        <p className="text-sm text-gray-700">{commitment.dueDate || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">创建人</p>
+                        <p className="text-sm text-gray-700">{commitment.creatorName}</p>
+                      </div>
+                    </div>
+
+                    {commitment.remark && (
+                      <div className="mb-3">
+                        <p className="text-xs text-gray-500 mb-1">备注</p>
+                        <p className="text-sm text-gray-700 bg-white p-3 rounded-lg">{commitment.remark}</p>
+                      </div>
+                    )}
+
+                    {commitment.cancelReason && (
+                      <div className="mb-3">
+                        <p className="text-xs text-gray-500 mb-1">取消原因</p>
+                        <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{commitment.cancelReason}</p>
+                      </div>
+                    )}
+
+                    {isCS && commitment.status !== 'cancelled' && (
+                      <div className="flex items-center gap-3 pt-3 border-t border-gray-200">
+                        {commitment.status !== 'fulfilled' && (
+                          <button
+                            onClick={() => handleOpenEditCompensation(commitment)}
+                            className="text-sm text-blue-600 hover:text-blue-800"
+                          >
+                            编辑
+                          </button>
+                        )}
+                        {(commitment.status === 'pendingFulfillment' || commitment.status === 'overdue') && (
+                          <>
+                            <button
+                              onClick={() => handleOpenFulfillCompensation(commitment)}
+                              className="text-sm text-green-600 hover:text-green-800"
+                            >
+                              标记履约
+                            </button>
+                            <button
+                              onClick={() => handleOpenCancelCompensation(commitment)}
+                              className="text-sm text-red-600 hover:text-red-800"
+                            >
+                              取消
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="space-y-6">
@@ -602,6 +935,229 @@ export default function CaseDetail() {
           )}
         </div>
       </div>
+
+      {showCompensationModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-100">
+              <h3 className="text-xl font-bold text-gray-900">
+                {editingCompensation ? '编辑赔付承诺' : '新建赔付承诺'}
+              </h3>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">承诺类型 *</label>
+                  <select
+                    value={compensationForm.type}
+                    onChange={(e) => setCompensationForm({ ...compensationForm, type: e.target.value as CompensationCommitmentType })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="cash">{COMPENSATION_COMMITMENT_TYPE_LABELS.cash}</option>
+                    <option value="coupon">{COMPENSATION_COMMITMENT_TYPE_LABELS.coupon}</option>
+                    <option value="reship">{COMPENSATION_COMMITMENT_TYPE_LABELS.reship}</option>
+                    <option value="offline">{COMPENSATION_COMMITMENT_TYPE_LABELS.offline}</option>
+                  </select>
+                </div>
+              </div>
+
+              {compensationForm.type === 'cash' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">赔付金额（元）*</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={compensationForm.amount || ''}
+                    onChange={(e) => setCompensationForm({ ...compensationForm, amount: parseFloat(e.target.value) || 0 })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              )}
+
+              {compensationForm.type === 'coupon' && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">优惠券名称 *</label>
+                    <input
+                      type="text"
+                      value={compensationForm.couponName || ''}
+                      onChange={(e) => setCompensationForm({ ...compensationForm, couponName: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">优惠券面值（元）*</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={compensationForm.couponValue || ''}
+                      onChange={(e) => setCompensationForm({ ...compensationForm, couponValue: parseFloat(e.target.value) || 0 })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {compensationForm.type === 'reship' && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">补寄商品名称 *</label>
+                    <input
+                      type="text"
+                      value={compensationForm.productName || ''}
+                      onChange={(e) => setCompensationForm({ ...compensationForm, productName: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">商品数量 *</label>
+                    <input
+                      type="number"
+                      value={compensationForm.productQuantity || ''}
+                      onChange={(e) => setCompensationForm({ ...compensationForm, productQuantity: parseInt(e.target.value) || 0 })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {compensationForm.type === 'offline' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">线下承诺详情 *</label>
+                  <textarea
+                    value={compensationForm.offlineDetails || ''}
+                    onChange={(e) => setCompensationForm({ ...compensationForm, offlineDetails: e.target.value })}
+                    rows={3}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">履约截止日期 *</label>
+                <input
+                  type="date"
+                  value={compensationForm.dueDate || ''}
+                  onChange={(e) => setCompensationForm({ ...compensationForm, dueDate: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">附件链接</label>
+                <input
+                  type="text"
+                  value={compensationForm.attachment || ''}
+                  onChange={(e) => setCompensationForm({ ...compensationForm, attachment: e.target.value })}
+                  placeholder="相关凭证或附件链接"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">备注</label>
+                <textarea
+                  value={compensationForm.remark || ''}
+                  onChange={(e) => setCompensationForm({ ...compensationForm, remark: e.target.value })}
+                  rows={3}
+                  placeholder="协商内容或其他说明"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
+              <button
+                onClick={() => setShowCompensationModal(false)}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSubmitCompensation}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                {editingCompensation ? '保存修改' : '创建承诺'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFulfillModal && selectedCompensation && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="p-6 border-b border-gray-100">
+              <h3 className="text-lg font-bold text-gray-900">标记履约</h3>
+              <p className="text-sm text-gray-500 mt-1">承诺编号: {selectedCompensation.commitmentNo}</p>
+            </div>
+
+            <div className="p-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1">履约备注</label>
+              <textarea
+                value={fulfillRemark}
+                onChange={(e) => setFulfillRemark(e.target.value)}
+                rows={3}
+                placeholder="请输入履约说明（可选）"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+
+            <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
+              <button
+                onClick={() => setShowFulfillModal(false)}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleFulfillCompensation}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              >
+                确认履约
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCancelModal && selectedCompensation && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="p-6 border-b border-gray-100">
+              <h3 className="text-lg font-bold text-gray-900">取消承诺</h3>
+              <p className="text-sm text-gray-500 mt-1">承诺编号: {selectedCompensation.commitmentNo}</p>
+            </div>
+
+            <div className="p-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1">取消原因 *</label>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                rows={3}
+                placeholder="请输入取消原因"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+
+            <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
+              <button
+                onClick={() => setShowCancelModal(false)}
+                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleCancelCompensation}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                确认取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showOverrideModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

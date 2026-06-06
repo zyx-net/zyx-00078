@@ -9,6 +9,7 @@ import ExportRefunds from '@/pages/ExportRefunds';
 import ExportHistory from '@/pages/ExportHistory';
 import BatchHistory from '@/pages/BatchHistory';
 import RuleConfig from '@/pages/RuleConfig';
+import CompensationList from '@/pages/CompensationList';
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) {
   const { user } = useAuthStore();
@@ -91,6 +92,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['cs']}>
                 <RuleConfig />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="compensation"
+            element={
+              <ProtectedRoute allowedRoles={['cs', 'leader', 'merchant']}>
+                <CompensationList />
               </ProtectedRoute>
             }
           />
