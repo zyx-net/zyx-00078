@@ -6,14 +6,18 @@ import {
   executeBatch,
   getBatchList,
   getBatchDetail,
-  exportBatchCSV
+  exportBatchCSV,
+  previewRevokeBatch,
+  executeRevokeBatch,
+  exportRevokeBatchCSV
 } from '../services/batchService.js';
 import {
   BatchPreviewRequest,
   BatchExecuteRequest,
   BatchListFilter,
   BatchOperationAction,
-  UserRole
+  UserRole,
+  BatchRevokeExecuteRequest
 } from '../../shared/types.js';
 
 const router = Router();
@@ -157,6 +161,104 @@ router.get('/:batchId/export', (req, res) => {
 
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="batch_${Date.now()}.csv"`);
+  res.send(result.data);
+});
+
+router.post('/revoke/preview', (req, res) => {
+  if (!req.user) return;
+
+  const body = req.body as { batchId: number };
+  const { batchId } = body;
+
+  if (!batchId || typeof batchId !== 'number') {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'INVALID_PARAMS',
+        message: '无效的批次ID'
+      }
+    });
+    return;
+  }
+
+  const result = previewRevokeBatch(
+    { batchId },
+    req.user.id,
+    req.user.role as UserRole
+  );
+
+  if (!result.success) {
+    res.status(400).json(result);
+    return;
+  }
+  res.json(result);
+});
+
+router.post('/revoke/execute', (req, res) => {
+  if (!req.user) return;
+
+  const body = req.body as BatchRevokeExecuteRequest;
+  const { batchId, remark, versions } = body;
+
+  if (!batchId || typeof batchId !== 'number') {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'INVALID_PARAMS',
+        message: '无效的批次ID'
+      }
+    });
+    return;
+  }
+
+  if (!versions || typeof versions !== 'object') {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'INVALID_PARAMS',
+        message: '缺少版本号信息'
+      }
+    });
+    return;
+  }
+
+  const result = executeRevokeBatch(
+    { batchId, remark: remark || '', versions },
+    req.user.id,
+    req.user.name,
+    req.user.role as UserRole
+  );
+
+  if (!result.success) {
+    res.status(400).json(result);
+    return;
+  }
+  res.json(result);
+});
+
+router.get('/revoke/:revokeId/export', (req, res) => {
+  if (!req.user) return;
+
+  const revokeId = parseInt(req.params.revokeId);
+  if (isNaN(revokeId)) {
+    res.status(400).json({
+      success: false,
+      error: {
+        code: 'INVALID_PARAMS',
+        message: '无效的撤销记录ID'
+      }
+    });
+    return;
+  }
+
+  const result = exportRevokeBatchCSV(revokeId);
+  if (!result.success) {
+    res.status(404).json(result);
+    return;
+  }
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="revoke_batch_${Date.now()}.csv"`);
   res.send(result.data);
 });
 

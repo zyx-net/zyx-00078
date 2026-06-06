@@ -71,8 +71,14 @@ CREATE TABLE IF NOT EXISTS batch_operations (
   failedCount INTEGER NOT NULL DEFAULT 0,
   skippedCount INTEGER NOT NULL DEFAULT 0,
   totalRefundAmount DECIMAL(12,2) NOT NULL DEFAULT 0,
+  isRevoked INTEGER NOT NULL DEFAULT 0,
+  revokedAt DATETIME,
+  revokedBy INTEGER,
+  revokedByName TEXT,
+  revokeRemark TEXT,
   createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (operatorId) REFERENCES users(id)
+  FOREIGN KEY (operatorId) REFERENCES users(id),
+  FOREIGN KEY (revokedBy) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS batch_items (
@@ -88,9 +94,57 @@ CREATE TABLE IF NOT EXISTS batch_items (
   errorMessage TEXT,
   newVersion INTEGER,
   newStatus TEXT,
+  revokeStatus TEXT CHECK(revokeStatus IN ('pending', 'success', 'failed', 'skipped')),
+  revokeErrorCode TEXT,
+  revokeErrorMessage TEXT,
+  revokeNewVersion INTEGER,
+  revokeNewStatus TEXT,
+  revokedAt DATETIME,
   createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
   updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (batchId) REFERENCES batch_operations(id),
+  FOREIGN KEY (caseId) REFERENCES cases(id)
+);
+
+CREATE TABLE IF NOT EXISTS batch_revoke_audits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  batchId INTEGER NOT NULL,
+  batchNo TEXT NOT NULL,
+  operatorId INTEGER NOT NULL,
+  operatorName TEXT NOT NULL,
+  remark TEXT,
+  totalCount INTEGER NOT NULL DEFAULT 0,
+  successCount INTEGER NOT NULL DEFAULT 0,
+  failedCount INTEGER NOT NULL DEFAULT 0,
+  skippedCount INTEGER NOT NULL DEFAULT 0,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (batchId) REFERENCES batch_operations(id),
+  FOREIGN KEY (operatorId) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS batch_revoke_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  revokeAuditId INTEGER NOT NULL,
+  batchItemId INTEGER NOT NULL,
+  caseId INTEGER NOT NULL,
+  orderNo TEXT NOT NULL,
+  originalStatus TEXT NOT NULL,
+  originalVersion INTEGER NOT NULL,
+  targetStatus TEXT NOT NULL,
+  targetVersion INTEGER NOT NULL,
+  currentStatus TEXT NOT NULL,
+  currentVersion INTEGER NOT NULL,
+  refundAmount DECIMAL(10,2) NOT NULL,
+  canRevoke INTEGER NOT NULL DEFAULT 0,
+  revokeReason TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'success', 'failed', 'skipped')),
+  errorCode TEXT,
+  errorMessage TEXT,
+  newVersion INTEGER,
+  newStatus TEXT,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (revokeAuditId) REFERENCES batch_revoke_audits(id),
+  FOREIGN KEY (batchItemId) REFERENCES batch_items(id),
   FOREIGN KEY (caseId) REFERENCES cases(id)
 );
 
@@ -102,8 +156,13 @@ CREATE INDEX IF NOT EXISTS idx_versions_case ON case_versions(caseId);
 CREATE INDEX IF NOT EXISTS idx_evidences_case ON evidences(caseId);
 CREATE INDEX IF NOT EXISTS idx_batch_operations_created ON batch_operations(createdAt);
 CREATE INDEX IF NOT EXISTS idx_batch_operations_operator ON batch_operations(operatorId);
+CREATE INDEX IF NOT EXISTS idx_batch_operations_revoked ON batch_operations(isRevoked);
 CREATE INDEX IF NOT EXISTS idx_batch_items_batch ON batch_items(batchId);
 CREATE INDEX IF NOT EXISTS idx_batch_items_case ON batch_items(caseId);
+CREATE INDEX IF NOT EXISTS idx_batch_revoke_audits_batch ON batch_revoke_audits(batchId);
+CREATE INDEX IF NOT EXISTS idx_batch_revoke_audits_operator ON batch_revoke_audits(operatorId);
+CREATE INDEX IF NOT EXISTS idx_batch_revoke_items_audit ON batch_revoke_items(revokeAuditId);
+CREATE INDEX IF NOT EXISTS idx_batch_revoke_items_case ON batch_revoke_items(caseId);
 `;
 
 export const INITIAL_USERS_SQL = `

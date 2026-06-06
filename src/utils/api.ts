@@ -14,7 +14,11 @@ import {
   BatchExecuteResponse,
   BatchOperation,
   BatchDetail,
-  BatchListFilter
+  BatchListFilter,
+  BatchRevokePreviewRequest,
+  BatchRevokePreviewResponse,
+  BatchRevokeExecuteRequest,
+  BatchRevokeExecuteResponse
 } from '../../shared/types.js';
 
 const BASE_URL = '/api';
@@ -198,6 +202,48 @@ export async function exportBatchCSV(
   const a = document.createElement('a');
   a.href = url;
   a.download = `batch_${batchId}_${Date.now()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}
+
+export async function previewRevokeBatch(
+  data: BatchRevokePreviewRequest
+): Promise<ApiResponse<BatchRevokePreviewResponse>> {
+  return request<BatchRevokePreviewResponse>('/batch/revoke/preview', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
+export async function executeRevokeBatch(
+  data: BatchRevokeExecuteRequest
+): Promise<ApiResponse<BatchRevokeExecuteResponse>> {
+  return request<BatchRevokeExecuteResponse>('/batch/revoke/execute', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+
+export async function exportRevokeBatchCSV(
+  revokeId: number
+): Promise<void> {
+  const token = getToken();
+  const response = await fetch(
+    `${BASE_URL}/batch/revoke/${revokeId}/export`,
+    {
+      headers: {
+        'Authorization': `Bearer ${token || ''}`
+      }
+    }
+  );
+
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `revoke_batch_${revokeId}_${Date.now()}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

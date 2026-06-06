@@ -2,11 +2,22 @@ import { db, initDatabase } from '../api/db/index.js';
 import {
   BatchExecuteResponse,
   BatchPreviewResponse,
-  ERROR_CODES
+  ERROR_CODES,
+  BatchRevokeExecuteResponse
 } from '../shared/types.js';
-import { previewBatch, executeBatch, getBatchDetail } from '../api/services/batchService.js';
+import {
+  previewBatch,
+  executeBatch,
+  getBatchDetail,
+  previewRevokeBatch,
+  executeRevokeBatch,
+  exportBatchCSV,
+  exportRevokeBatchCSV
+} from '../api/services/batchService.js';
 
 function resetDatabase() {
+  db.exec('DELETE FROM batch_revoke_items');
+  db.exec('DELETE FROM batch_revoke_audits');
   db.exec('DELETE FROM evidences');
   db.exec('DELETE FROM case_versions');
   db.exec('DELETE FROM batch_items');
@@ -531,6 +542,676 @@ if (runTest('10. 并发修改版本冲突验证（双重校验）', () => {
   const caseInfoAfter = db.prepare('SELECT * FROM cases WHERE id = ?').get(targetCaseId) as any;
   assert(caseInfoAfter.version === 4, '版本应该保持为4');
   assert(caseInfoAfter.status === 'csArbitration', '状态不应该改变');
+})) { passed++; } else { failed++; }
+
+if (runTest('11. 成功撤销批次（全部可撤销）', () => {
+  resetDatabase();
+  const caseIds = createTestCases();
+  const csArbitrationIds = caseIds.slice(0, 3);
+
+  const versions: Record<number, number> = {};
+  csArbitrationIds.forEach(id => {
+    versions[id] = 3;
+  });
+
+  const executeResult = executeBatch(
+    {
+      caseIds: csArbitrationIds,
+      action: 'csRefund',
+      remark: '撤销测试批次',
+      versions
+    },
+    csUser.user.id,
+    csUser.user.name,
+    csUser.user.role
+  );
+
+  assert(executeResult.success === true, '批量操作应该成功');
+  assert(executeResult.data!.successCount === 3, '应该成功3个');
+
+  const batchNo = executeResult.data!.batchNo;
+  const batchDetail = getBatchDetail(batchNo);
+  const batchId = batchDetail.data!.id;
+
+  const previewResult = previewRevokeBatch(
+    { batchId },
+    csUser.user.id,
+    csUser.user.role
+  );
+
+  assert(previewResult.success === true, '撤销预览应该成功');
+  assert(previewResult.data!.totalCount === 3, '应该有3个案件');
+  assert(previewResult.data!.revocableCount === 3, '应该全部可撤销');
+  assert(previewResult.data!.canRevokeBatch === true, '应该可以撤销批次');
+
+  const revokeVersions: Record<number, number> = {};
+  previewResult.data!.items.forEach(item => {
+    revokeVersions[item.caseId] = item.currentVersion;
+  });
+
+  const revokeResult = executeRevokeBatch(
+    {
+      batchId,
+      remark: '撤销测试',
+      versions: revokeVersions
+    },
+    csUser.user.id,
+    csUser.user.name,
+    csUser.user.role
+  );
+
+  assert(revokeResult.success === true, '撤销执行应该成功');
+  assert(revokeResult.data!.totalCount === 3, '应该处理3个案件');
+  assert(revokeResult.data!.successCount === 3, '应该全部撤销成功');
+  assert(revokeResult.data!.failedCount === 0, '应该没有失败');
+  assert(revokeResult.data!.skippedCount === 0, '应该没有跳过');
+
+  revokeResult.data!.items.forEach(item => {
+    assert(item.status === 'success', `案件 ${item.orderNo} 应该撤销成功`);
+    assert(item.currentVersion === 5, `案件 ${item.orderNo} 版本应该递增到5`);
+  });
+
+  const batchAfter = getBatchDetail(batchNo);
+  assert(batchAfter.data!.isRevoked === true, '批次应该标记为已撤销');
+  assert(batchAfter.data!.revokedBy === csUser.user.id, '撤销人应该正确');
+  assert(batchAfter.data!.revokedByName === csUser.user.name, '撤销人姓名应该正确');
+  assert(batchAfter.data!.revokeRemark === '撤销测试', '撤销备注应该正确');
+
+  csArbitrationIds.forEach(caseId => {
+    const caseInfo = db.prepare('SELECT * FROM cases WHERE id = ?').get(caseId) as any;
+    assert(caseInfo.status === 'csArbitration', `案件 ${caseId} 状态应该回滚到客服仲裁`);
+    assert(caseInfo.version === 5, `案件 ${caseId} 版本应该是5`);
+  });
+})) { passed++; } else { failed++; }
+
+if (runTest('12. 撤销预览-混入版本冲突（部分不可撤销）', () => {
+  resetDatabase();
+  const caseIds = createTestCases();
+  const csArbitrationIds = caseIds.slice(0, 3);
+
+  const versions: Record<number, number> = {};
+  csArbitrationIds.forEach(id => {
+    versions[id] = 3;
+  });
+
+  const executeResult = executeBatch(
+    {
+      caseIds: csArbitrationIds,
+      action: 'csRefund',
+      remark: '撤销测试批次',
+      versions
+    },
+    csUser.user.id,
+    csUser.user.name,
+    csUser.user.role
+  );
+
+  const batchNo = executeResult.data!.batchNo;
+  const batchDetail = getBatchDetail(batchNo);
+  const batchId = batchDetail.data!.id;
+
+  db.prepare('UPDATE cases SET version = 5, status = ? WHERE id = ?').run('refundCompleted', csArbitrationIds[1]);
+
+  const previewResult = previewRevokeBatch(
+    { batchId },
+    csUser.user.id,
+    csUser.user.role
+  );
+
+  assert(previewResult.success === true, '撤销预览应该成功');
+  assert(previewResult.data!.totalCount === 3, '应该有3个案件');
+  assert(previewResult.data!.revocableCount === 2, '应该有2个可撤销');
+  assert(previewResult.data!.unrevocableCount === 1, '应该有1个不可撤销');
+
+  const unrevocableItem = previewResult.data!.items.find(i => !i.canRevoke);
+  assert(unrevocableItem !== undefined, '应该有不可撤销的案件');
+  assert(unrevocableItem!.revokeReason!.includes('已被后续处理'), '原因应该说明已被处理');
+})) { passed++; } else { failed++; }
+
+if (runTest('13. 撤销执行-混入版本冲突（部分失败）', () => {
+  resetDatabase();
+  const caseIds = createTestCases();
+  const csArbitrationIds = caseIds.slice(0, 3);
+
+  const versions: Record<number, number> = {};
+  csArbitrationIds.forEach(id => {
+    versions[id] = 3;
+  });
+
+  const executeResult = executeBatch(
+    {
+      caseIds: csArbitrationIds,
+      action: 'csRefund',
+      remark: '撤销测试批次',
+      versions
+    },
+    csUser.user.id,
+    csUser.user.name,
+    csUser.user.role
+  );
+
+  const batchNo = executeResult.data!.batchNo;
+  const batchDetail = getBatchDetail(batchNo);
+  const batchId = batchDetail.data!.id;
+
+  const previewResult = previewRevokeBatch(
+    { batchId },
+    csUser.user.id,
+    csUser.user.role
+  );
+
+  const revokeVersions: Record<number, number> = {};
+  previewResult.data!.items.forEach((item, index) => {
+    if (index === 1) {
+      revokeVersions[item.caseId] = item.currentVersion - 1;
+    } else {
+      revokeVersions[item.caseId] = item.currentVersion;
+    }
+  });
+
+  const revokeResult = executeRevokeBatch(
+    {
+      batchId,
+      remark: '版本冲突撤销测试',
+      versions: revokeVersions
+    },
+    csUser.user.id,
+    csUser.user.name,
+    csUser.user.role
+  );
+
+  assert(revokeResult.success === true, '撤销执行应该成功（部分失败）');
+  assert(revokeResult.data!.totalCount === 3, '应该处理3个案件');
+  assert(revokeResult.data!.successCount === 2, '应该成功2个');
+  assert(revokeResult.data!.failedCount === 1, '应该失败1个');
+  assert(revokeResult.data!.skippedCount === 0, '应该没有跳过');
+
+  const failedItem = revokeResult.data!.items.find(i => i.status === 'failed');
+  assert(failedItem !== undefined, '应该有失败的案件');
+  assert(failedItem!.errorCode === ERROR_CODES.VERSION_CONFLICT, '错误码应该是版本冲突');
+
+  const successItems = revokeResult.data!.items.filter(i => i.status === 'success');
+  assert(successItems.length === 2, '应该有2个成功的案件');
+})) { passed++; } else { failed++; }
+
+if (runTest('14. 越权撤销（商家/团长调用撤销接口）', () => {
+  resetDatabase();
+  const caseIds = createTestCases();
+  const csArbitrationIds = caseIds.slice(0, 2);
+
+  const versions: Record<number, number> = {};
+  csArbitrationIds.forEach(id => {
+    versions[id] = 3;
+  });
+
+  const executeResult = executeBatch(
+    {
+      caseIds: csArbitrationIds,
+      action: 'csRefund',
+      remark: '越权测试批次',
+      versions
+    },
+    csUser.user.id,
+    csUser.user.name,
+    csUser.user.role
+  );
+
+  const batchNo = executeResult.data!.batchNo;
+  const batchDetail = getBatchDetail(batchNo);
+  const batchId = batchDetail.data!.id;
+
+  const merchantResult = previewRevokeBatch(
+    { batchId },
+    merchantUser.user.id,
+    merchantUser.user.role
+  );
+
+  assert(merchantResult.success === false, '商家预览撤销应该被拒绝');
+  assert(merchantResult.error!.code === ERROR_CODES.PERMISSION_DENIED, '错误码应该是权限拒绝');
+
+  const leaderResult = previewRevokeBatch(
+    { batchId },
+    leaderUser.user.id,
+    leaderUser.user.role
+  );
+
+  assert(leaderResult.success === false, '团长预览撤销应该被拒绝');
+  assert(leaderResult.error!.code === ERROR_CODES.PERMISSION_DENIED, '错误码应该是权限拒绝');
+
+  const revokeVersions: Record<number, number> = {};
+  csArbitrationIds.forEach(id => {
+    revokeVersions[id] = 4;
+  });
+
+  const merchantExecuteResult = executeRevokeBatch(
+    {
+      batchId,
+      remark: '商家越权撤销',
+      versions: revokeVersions
+    },
+    merchantUser.user.id,
+    merchantUser.user.name,
+    merchantUser.user.role
+  );
+
+  assert(merchantExecuteResult.success === false, '商家执行撤销应该被拒绝');
+  assert(merchantExecuteResult.error!.code === ERROR_CODES.PERMISSION_DENIED, '错误码应该是权限拒绝');
+
+  const leaderExecuteResult = executeRevokeBatch(
+    {
+      batchId,
+      remark: '团长越权撤销',
+      versions: revokeVersions
+    },
+    leaderUser.user.id,
+    leaderUser.user.name,
+    leaderUser.user.role
+  );
+
+  assert(leaderExecuteResult.success === false, '团长执行撤销应该被拒绝');
+  assert(leaderExecuteResult.error!.code === ERROR_CODES.PERMISSION_DENIED, '错误码应该是权限拒绝');
+})) { passed++; } else { failed++; }
+
+if (runTest('15. 撤销他人批次（跨客服）', () => {
+  resetDatabase();
+  const caseIds = createTestCases();
+  const csArbitrationIds = caseIds.slice(0, 2);
+
+  const versions: Record<number, number> = {};
+  csArbitrationIds.forEach(id => {
+    versions[id] = 3;
+  });
+
+  const executeResult = executeBatch(
+    {
+      caseIds: csArbitrationIds,
+      action: 'csRefund',
+      remark: '他人批次测试',
+      versions
+    },
+    csUser.user.id,
+    csUser.user.name,
+    csUser.user.role
+  );
+
+  const batchNo = executeResult.data!.batchNo;
+  const batchDetail = getBatchDetail(batchNo);
+  const batchId = batchDetail.data!.id;
+
+  const otherCsUserId = csUser.user.id + 100;
+
+  const previewResult = previewRevokeBatch(
+    { batchId },
+    otherCsUserId,
+    'cs'
+  );
+
+  assert(previewResult.success === false, '预览撤销他人批次应该被拒绝');
+  assert(previewResult.error!.code === ERROR_CODES.BATCH_NOT_OWNED, '错误码应该是不是自己的批次');
+
+  const revokeVersions: Record<number, number> = {};
+  csArbitrationIds.forEach(id => {
+    revokeVersions[id] = 4;
+  });
+
+  const executeResult2 = executeRevokeBatch(
+    {
+      batchId,
+      remark: '撤销他人批次',
+      versions: revokeVersions
+    },
+    otherCsUserId,
+    '其他客服',
+    'cs'
+  );
+
+  assert(executeResult2.success === false, '执行撤销他人批次应该被拒绝');
+  assert(executeResult2.error!.code === ERROR_CODES.BATCH_NOT_OWNED, '错误码应该是不是自己的批次');
+})) { passed++; } else { failed++; }
+
+if (runTest('16. 撤销已撤销的批次', () => {
+  resetDatabase();
+  const caseIds = createTestCases();
+  const csArbitrationIds = caseIds.slice(0, 2);
+
+  const versions: Record<number, number> = {};
+  csArbitrationIds.forEach(id => {
+    versions[id] = 3;
+  });
+
+  const executeResult = executeBatch(
+    {
+      caseIds: csArbitrationIds,
+      action: 'csRefund',
+      remark: '重复撤销测试',
+      versions
+    },
+    csUser.user.id,
+    csUser.user.name,
+    csUser.user.role
+  );
+
+  const batchNo = executeResult.data!.batchNo;
+  const batchDetail = getBatchDetail(batchNo);
+  const batchId = batchDetail.data!.id;
+
+  const previewResult1 = previewRevokeBatch(
+    { batchId },
+    csUser.user.id,
+    csUser.user.role
+  );
+
+  const revokeVersions: Record<number, number> = {};
+  previewResult1.data!.items.forEach(item => {
+    revokeVersions[item.caseId] = item.currentVersion;
+  });
+
+  const revokeResult1 = executeRevokeBatch(
+    {
+      batchId,
+      remark: '第一次撤销',
+      versions: revokeVersions
+    },
+    csUser.user.id,
+    csUser.user.name,
+    csUser.user.role
+  );
+
+  assert(revokeResult1.success === true, '第一次撤销应该成功');
+
+  const previewResult2 = previewRevokeBatch(
+    { batchId },
+    csUser.user.id,
+    csUser.user.role
+  );
+
+  assert(previewResult2.success === false, '第二次预览撤销应该失败');
+  assert(previewResult2.error!.code === ERROR_CODES.BATCH_ALREADY_REVOKED, '错误码应该是已撤销');
+
+  const executeResult2 = executeRevokeBatch(
+    {
+      batchId,
+      remark: '第二次撤销',
+      versions: revokeVersions
+    },
+    csUser.user.id,
+    csUser.user.name,
+    csUser.user.role
+  );
+
+  assert(executeResult2.success === false, '第二次执行撤销应该失败');
+  assert(executeResult2.error!.code === ERROR_CODES.BATCH_ALREADY_REVOKED, '错误码应该是已撤销');
+})) { passed++; } else { failed++; }
+
+if (runTest('17. 撤销-案件已被其他批次处理', () => {
+  resetDatabase();
+  const caseIds = createTestCases();
+  const targetCaseId = caseIds[0];
+
+  const versions1: Record<number, number> = {};
+  versions1[targetCaseId] = 3;
+
+  const executeResult1 = executeBatch(
+    {
+      caseIds: [targetCaseId],
+      action: 'csReject',
+      remark: '第一个批次',
+      versions: versions1
+    },
+    csUser.user.id,
+    csUser.user.name,
+    csUser.user.role
+  );
+
+  assert(executeResult1.success === true, '第一个批次应该成功');
+  const batch1No = executeResult1.data!.batchNo;
+  const batch1Detail = getBatchDetail(batch1No);
+  const batch1Id = batch1Detail.data!.id;
+
+  db.prepare('UPDATE cases SET status = ?, version = ? WHERE id = ?').run('csArbitration', 5, targetCaseId);
+  db.prepare(`
+    INSERT INTO case_versions (caseId, version, fromStatus, toStatus, action, operatorId, operatorName, operatorRole, remark)
+    VALUES (?, 5, 'rejected', 'csArbitration', 'csRefund', ?, ?, 'cs', '手动调整')
+  `).run(targetCaseId, csUser.user.id, csUser.user.name);
+
+  const versions2: Record<number, number> = {};
+  versions2[targetCaseId] = 5;
+
+  const executeResult2 = executeBatch(
+    {
+      caseIds: [targetCaseId],
+      action: 'csRefund',
+      remark: '第二个批次',
+      versions: versions2
+    },
+    csUser.user.id,
+    csUser.user.name,
+    csUser.user.role
+  );
+
+  assert(executeResult2.success === true, '第二个批次应该成功');
+
+  const previewResult = previewRevokeBatch(
+    { batchId: batch1Id },
+    csUser.user.id,
+    csUser.user.role
+  );
+
+  assert(previewResult.success === true, '撤销预览应该成功');
+  assert(previewResult.data!.revocableCount === 0, '应该没有可撤销的案件');
+  assert(previewResult.data!.canRevokeBatch === false, '应该不能撤销批次');
+
+  const unrevocableItem = previewResult.data!.items[0];
+  assert(unrevocableItem.canRevoke === false, '案件应该不可撤销');
+  assert(unrevocableItem.revokeReason!.includes('已被其他批次处理'), '原因应该说明已被其他批次处理');
+})) { passed++; } else { failed++; }
+
+if (runTest('18. 数据持久化验证-撤销后重启一致性', () => {
+  resetDatabase();
+  const caseIds = createTestCases();
+  const csArbitrationIds = caseIds.slice(0, 2);
+
+  const versions: Record<number, number> = {};
+  csArbitrationIds.forEach(id => {
+    versions[id] = 3;
+  });
+
+  const executeResult = executeBatch(
+    {
+      caseIds: csArbitrationIds,
+      action: 'csRefund',
+      remark: '持久化测试批次',
+      versions
+    },
+    csUser.user.id,
+    csUser.user.name,
+    csUser.user.role
+  );
+
+  const batchNo = executeResult.data!.batchNo;
+  const batchDetail = getBatchDetail(batchNo);
+  const batchId = batchDetail.data!.id;
+
+  const previewResult = previewRevokeBatch(
+    { batchId },
+    csUser.user.id,
+    csUser.user.role
+  );
+
+  const revokeVersions: Record<number, number> = {};
+  previewResult.data!.items.forEach(item => {
+    revokeVersions[item.caseId] = item.currentVersion;
+  });
+
+  const revokeResult = executeRevokeBatch(
+    {
+      batchId,
+      remark: '撤销持久化测试',
+      versions: revokeVersions
+    },
+    csUser.user.id,
+    csUser.user.name,
+    csUser.user.role
+  );
+
+  assert(revokeResult.success === true, '撤销应该成功');
+  const revokeId = revokeResult.data!.revokeId;
+
+  const batchBefore = db.prepare('SELECT * FROM batch_operations WHERE id = ?').get(batchId) as any;
+  const itemsBefore = db.prepare('SELECT * FROM batch_items WHERE batchId = ? ORDER BY id').all(batchId) as any[];
+  const casesBefore = db.prepare('SELECT id, status, version FROM cases WHERE id IN (?, ?) ORDER BY id').all(csArbitrationIds[0], csArbitrationIds[1]) as any[];
+  const revokeAuditBefore = db.prepare('SELECT * FROM batch_revoke_audits WHERE id = ?').get(revokeId) as any;
+  const revokeItemsBefore = db.prepare('SELECT * FROM batch_revoke_items WHERE revokeAuditId = ? ORDER BY id').all(revokeId) as any[];
+
+  assert(batchBefore.isRevoked === 1, '批次应该标记为已撤销');
+  assert(batchBefore.revokedBy === csUser.user.id, '撤销人应该正确');
+  assert(batchBefore.revokedByName === csUser.user.name, '撤销人姓名应该正确');
+  assert(batchBefore.revokeRemark === '撤销持久化测试', '撤销备注应该正确');
+  assert(itemsBefore.length === 2, '明细数量应该正确');
+
+  for (let i = 0; i < itemsBefore.length; i++) {
+    assert(itemsBefore[i].revokeStatus === 'success', `撤销状态应该是成功 ${i}`);
+    assert(itemsBefore[i].revokeNewStatus === 'csArbitration', `撤销后状态应该正确 ${i}`);
+    assert(itemsBefore[i].revokeNewVersion === 5, `撤销后版本应该正确 ${i}`);
+  }
+
+  for (let i = 0; i < casesBefore.length; i++) {
+    assert(casesBefore[i].status === 'csArbitration', `案件状态应该是客服仲裁 ${i}`);
+    assert(casesBefore[i].version === 5, `案件版本应该是5 ${i}`);
+  }
+
+  assert(revokeAuditBefore.batchId === batchId, '撤销审计批次ID应该正确');
+  assert(revokeAuditBefore.successCount === 2, '撤销成功数应该正确');
+  assert(revokeItemsBefore.length === 2, '撤销明细数量应该正确');
+
+  const exportResult = exportBatchCSV(batchId);
+  assert(exportResult.success === true, '批次导出应该成功');
+  assert(exportResult.data!.includes('已撤销'), '导出内容应该包含已撤销信息');
+  assert(exportResult.data!.includes('撤销持久化测试'), '导出内容应该包含撤销备注');
+
+  const exportRevokeResult = exportRevokeBatchCSV(revokeId);
+  assert(exportRevokeResult.success === true, '撤销记录导出应该成功');
+  assert(exportRevokeResult.data!.includes('撤销批次'), '导出内容应该包含撤销批次');
+
+  const batchDetailAfter = getBatchDetail(batchNo);
+  assert(batchDetailAfter.success === true, '应该能查询到批次详情');
+  assert(batchDetailAfter.data!.isRevoked === true, '批次详情应该显示已撤销');
+  assert(batchDetailAfter.data!.items.length === 2, '批次详情应该包含2个明细');
+
+  const caseVersions = db.prepare('SELECT * FROM case_versions WHERE caseId = ? ORDER BY version DESC').all(csArbitrationIds[0]) as any[];
+  assert(caseVersions.length >= 5, '版本历史应该包含新版本');
+  assert(caseVersions[0].version === 5, '最新版本应该是5');
+  assert(caseVersions[0].action === 'csRefund', '操作类型应该正确');
+  assert(caseVersions[0].toStatus === 'csArbitration', '目标状态应该正确');
+  assert(caseVersions[0].remark.includes('撤销批次'), '备注应该包含撤销批次');
+})) { passed++; } else { failed++; }
+
+if (runTest('19. 撤销-没有成功案件的批次', () => {
+  resetDatabase();
+  const caseIds = createTestCases();
+  const mixedIds = [caseIds[0], caseIds[3], caseIds[4]];
+
+  const versions: Record<number, number> = {};
+  mixedIds.forEach((id, index) => {
+    versions[id] = index === 0 ? 3 : index === 1 ? 2 : 4;
+  });
+
+  const executeResult = executeBatch(
+    {
+      caseIds: mixedIds,
+      action: 'csRefund',
+      remark: '无成功案件批次',
+      versions
+    },
+    csUser.user.id,
+    csUser.user.name,
+    csUser.user.role
+  );
+
+  assert(executeResult.success === true, '批量执行应该成功');
+  assert(executeResult.data!.successCount === 1, '应该成功1个');
+  assert(executeResult.data!.skippedCount === 2, '应该跳过2个');
+
+  const batchNo = executeResult.data!.batchNo;
+  const batchDetail = getBatchDetail(batchNo);
+  const batchId = batchDetail.data!.id;
+
+  db.prepare('UPDATE cases SET status = ?, version = ? WHERE id = ?').run('csArbitration', 5, caseIds[0]);
+
+  const previewResult = previewRevokeBatch(
+    { batchId },
+    csUser.user.id,
+    csUser.user.role
+  );
+
+  assert(previewResult.success === true, '撤销预览应该成功');
+  assert(previewResult.data!.canRevokeBatch === false, '应该不能撤销批次');
+  assert(previewResult.data!.batchNotRevocableReason === '该批次没有可撤销的案件', '原因应该正确');
+})) { passed++; } else { failed++; }
+
+if (runTest('20. 撤销CSV导出内容验证', () => {
+  resetDatabase();
+  const caseIds = createTestCases();
+  const csArbitrationIds = caseIds.slice(0, 2);
+
+  const versions: Record<number, number> = {};
+  csArbitrationIds.forEach(id => {
+    versions[id] = 3;
+  });
+
+  const executeResult = executeBatch(
+    {
+      caseIds: csArbitrationIds,
+      action: 'csRefund',
+      remark: '导出测试批次',
+      versions
+    },
+    csUser.user.id,
+    csUser.user.name,
+    csUser.user.role
+  );
+
+  const batchNo = executeResult.data!.batchNo;
+  const batchDetail = getBatchDetail(batchNo);
+  const batchId = batchDetail.data!.id;
+
+  const previewResult = previewRevokeBatch(
+    { batchId },
+    csUser.user.id,
+    csUser.user.role
+  );
+
+  const revokeVersions: Record<number, number> = {};
+  previewResult.data!.items.forEach(item => {
+    revokeVersions[item.caseId] = item.currentVersion;
+  });
+
+  const revokeResult = executeRevokeBatch(
+    {
+      batchId,
+      remark: '撤销导出测试',
+      versions: revokeVersions
+    },
+    csUser.user.id,
+    csUser.user.name,
+    csUser.user.role
+  );
+
+  const revokeId = revokeResult.data!.revokeId;
+
+  const exportResult = exportRevokeBatchCSV(revokeId);
+  assert(exportResult.success === true, '撤销记录导出应该成功');
+
+  const csvContent = exportResult.data!;
+  assert(csvContent.includes('撤销记录ID'), '导出应该包含撤销记录ID');
+  assert(csvContent.includes('批次号'), '导出应该包含批次号');
+  assert(csvContent.includes('撤销前状态'), '导出应该包含撤销前状态');
+  assert(csvContent.includes('撤销后状态'), '导出应该包含撤销后状态');
+  assert(csvContent.includes('撤销目标状态'), '导出应该包含撤销目标状态');
+  assert(csvContent.includes(batchNo), '导出应该包含批次号');
+  assert(csvContent.includes('撤销导出测试'), '导出应该包含撤销备注');
+  assert(csvContent.includes('客服仲裁'), '导出应该包含状态');
+  assert(csvContent.includes('撤销成功'), '导出应该包含撤销成功状态');
 })) { passed++; } else { failed++; }
 
 console.log('\n========================================');

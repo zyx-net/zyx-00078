@@ -180,6 +180,11 @@ export interface BatchOperation {
   failedCount: number;
   skippedCount: number;
   totalRefundAmount: number;
+  isRevoked: boolean;
+  revokedAt?: string;
+  revokedBy?: number;
+  revokedByName?: string;
+  revokeRemark?: string;
   createdAt: string;
 }
 
@@ -196,8 +201,55 @@ export interface BatchItem {
   errorMessage?: string;
   newVersion?: number;
   newStatus?: CaseStatus;
+  revokeStatus?: BatchItemStatus;
+  revokeErrorCode?: string;
+  revokeErrorMessage?: string;
+  revokeNewVersion?: number;
+  revokeNewStatus?: CaseStatus;
+  revokedAt?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface BatchRevokeAudit {
+  id: number;
+  batchId: number;
+  batchNo: string;
+  operatorId: number;
+  operatorName: string;
+  remark: string;
+  totalCount: number;
+  successCount: number;
+  failedCount: number;
+  skippedCount: number;
+  createdAt: string;
+}
+
+export interface BatchRevokeItem {
+  id: number;
+  revokeAuditId: number;
+  batchItemId: number;
+  caseId: number;
+  orderNo: string;
+  originalStatus: CaseStatus;
+  originalVersion: number;
+  targetStatus: CaseStatus;
+  targetVersion: number;
+  currentStatus: CaseStatus;
+  currentVersion: number;
+  refundAmount: number;
+  canRevoke: boolean;
+  revokeReason?: string;
+  status: BatchItemStatus;
+  errorCode?: string;
+  errorMessage?: string;
+  newVersion?: number;
+  newStatus?: CaseStatus;
+  createdAt: string;
+}
+
+export interface BatchRevokeDetail extends BatchRevokeAudit {
+  items: BatchRevokeItem[];
 }
 
 export interface BatchDetail extends BatchOperation {
@@ -263,8 +315,68 @@ export const ERROR_CODES = {
   MISSING_EVIDENCE: 'MISSING_EVIDENCE',
   SERVER_ERROR: 'SERVER_ERROR',
   BATCH_EMPTY: 'BATCH_EMPTY',
-  BATCH_NOT_FOUND: 'BATCH_NOT_FOUND'
+  BATCH_NOT_FOUND: 'BATCH_NOT_FOUND',
+  BATCH_ALREADY_REVOKED: 'BATCH_ALREADY_REVOKED',
+  BATCH_NOT_OWNED: 'BATCH_NOT_OWNED',
+  BATCH_NOT_REVOCABLE: 'BATCH_NOT_REVOCABLE',
+  CASE_ALREADY_PROCESSED: 'CASE_ALREADY_PROCESSED',
+  REVOKE_EMPTY: 'REVOKE_EMPTY'
 } as const;
+
+export interface BatchRevokePreviewRequest {
+  batchId: number;
+}
+
+export interface BatchRevokePreviewItem {
+  batchItemId: number;
+  caseId: number;
+  orderNo: string;
+  originalStatus: CaseStatus;
+  originalVersion: number;
+  targetStatus: CaseStatus;
+  targetVersion: number;
+  currentStatus: CaseStatus;
+  currentVersion: number;
+  refundAmount: number;
+  canRevoke: boolean;
+  revokeReason?: string;
+}
+
+export interface BatchRevokePreviewResponse {
+  items: BatchRevokePreviewItem[];
+  totalCount: number;
+  revocableCount: number;
+  unrevocableCount: number;
+  totalRefundAmount: number;
+  revocableRefundAmount: number;
+  canRevokeBatch: boolean;
+  batchNotRevocableReason?: string;
+}
+
+export interface BatchRevokeExecuteRequest {
+  batchId: number;
+  remark: string;
+  versions: Record<number, number>;
+}
+
+export interface BatchRevokeExecuteResponse {
+  revokeId: number;
+  batchNo: string;
+  totalCount: number;
+  successCount: number;
+  failedCount: number;
+  skippedCount: number;
+  totalRefundAmount: number;
+  successRefundAmount: number;
+  items: BatchItemResult[];
+}
+
+export const BATCH_REVOKE_ITEM_STATUS_LABELS: Record<BatchItemStatus, string> = {
+  pending: '待处理',
+  success: '撤销成功',
+  failed: '撤销失败',
+  skipped: '已跳过'
+};
 
 export const BATCH_OPERATION_LABELS: Record<BatchOperationAction, string> = {
   csRefund: '批量同意退款',

@@ -11,7 +11,9 @@
     "check": "tsc --noEmit",
     "server:dev": "nodemon",
     "dev": "concurrently \"npm run client:dev\" \"npm run server:dev\"",
-    "test:batch": "node --import tsx/esm tests/batchOperation.test.ts"
+    "test:batch": "node --import tsx/esm tests/batchOperation.test.ts",
+    "test:frontend": "node --import tsx/esm tests/batchRevokeFrontend.test.ts",
+    "test:all": "npm run test:batch && npm run test:frontend"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

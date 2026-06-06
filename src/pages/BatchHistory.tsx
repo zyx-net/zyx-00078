@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Search, Download, Eye, Calendar, ArrowLeft, CheckCircle, XCircle, SkipForward } from 'lucide-react';
+import { Search, Download, Eye, Calendar, ArrowLeft, CheckCircle, XCircle, SkipForward, Undo2 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getBatches, getBatchDetail, exportBatchCSV } from '@/utils/api';
+import { getBatches, getBatchDetail, exportBatchCSV, exportRevokeBatchCSV } from '@/utils/api';
 import { useAuthStore } from '@/store/authStore';
+import BatchRevokeModal from '@/components/BatchRevokeModal';
 import {
   BatchOperation,
   BatchDetail,
@@ -10,7 +11,9 @@ import {
   BatchOperationAction,
   BATCH_OPERATION_LABELS,
   CASE_STATUS_LABELS,
-  BATCH_ITEM_STATUS_LABELS
+  BATCH_ITEM_STATUS_LABELS,
+  BATCH_REVOKE_ITEM_STATUS_LABELS,
+  BatchRevokeExecuteResponse
 } from '../../shared/types';
 
 export default function BatchHistory() {
@@ -23,6 +26,9 @@ export default function BatchHistory() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [filter, setFilter] = useState<BatchListFilter>({});
   const [view, setView] = useState<'list' | 'detail'>('list');
+  const [revokeModalOpen, setRevokeModalOpen] = useState(false);
+  const [revokeBatchId, setRevokeBatchId] = useState<number | null>(null);
+  const [revokeBatchNo, setRevokeBatchNo] = useState('');
 
   const loadBatches = async () => {
     setLoading(true);
@@ -79,6 +85,29 @@ export default function BatchHistory() {
     navigate('/batch');
   };
 
+  const handleRevoke = (batch: BatchOperation) => {
+    setRevokeBatchId(batch.id);
+    setRevokeBatchNo(batch.batchNo);
+    setRevokeModalOpen(true);
+  };
+
+  const handleRevokeSuccess = async (result: BatchRevokeExecuteResponse) => {
+    setRevokeModalOpen(false);
+    if (view === 'list') {
+      await loadBatches();
+    } else if (batchId) {
+      await loadBatchDetail(batchId);
+    }
+  };
+
+  const canRevokeBatch = (batch: BatchOperation): boolean => {
+    if (!user || user.role !== 'cs') return false;
+    if (batch.operatorId !== user.id) return false;
+    if (batch.isRevoked) return false;
+    if (batch.successCount === 0) return false;
+    return true;
+  };
+
   const getResultIcon = (status: 'success' | 'failed' | 'skipped' | 'pending') => {
     switch (status) {
       case 'success':
@@ -102,15 +131,57 @@ export default function BatchHistory() {
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800">
-              {BATCH_OPERATION_LABELS[batchDetail.action as BatchOperationAction]}
-            </h1>
-            <p className="text-sm text-gray-500">批次号：{batchDetail.batchNo}</p>
+          <div className="flex-1">
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-gray-800">
+                {BATCH_OPERATION_LABELS[batchDetail.action as BatchOperationAction]}
+              </h1>
+              {batchDetail.isRevoked && (
+                <span className="text-sm px-3 py-1 bg-orange-100 text-orange-600 rounded-full font-medium">
+                  已撤销
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-gray-500 mt-1">批次号：{batchDetail.batchNo}</p>
           </div>
+          {canRevokeBatch(batchDetail) && (
+            <button
+              onClick={() => handleRevoke(batchDetail)}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-600 to-red-600 text-white text-sm font-medium rounded-xl hover:shadow-lg transition-all"
+            >
+              <Undo2 className="w-4 h-4" />
+              撤销批次
+            </button>
+          )}
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+          {batchDetail.isRevoked && (
+            <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-xl">
+              <p className="text-sm text-orange-700 mb-1">
+                <span className="font-medium">撤销状态：</span>已撤销
+              </p>
+              {batchDetail.revokedAt && (
+                <p className="text-sm text-orange-700 mb-1">
+                  <span className="font-medium">撤销时间：</span>
+                  {new Date(batchDetail.revokedAt).toLocaleString()}
+                </p>
+              )}
+              {batchDetail.revokedByName && (
+                <p className="text-sm text-orange-700 mb-1">
+                  <span className="font-medium">撤销人：</span>
+                  {batchDetail.revokedByName}
+                </p>
+              )}
+              {batchDetail.revokeRemark && (
+                <p className="text-sm text-orange-700">
+                  <span className="font-medium">撤销备注：</span>
+                  {batchDetail.revokeRemark}
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
             <div className="bg-blue-50 rounded-xl p-4">
               <p className="text-sm text-blue-600 font-medium">总计</p>
@@ -151,13 +222,15 @@ export default function BatchHistory() {
 
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-800">处理明细</h3>
-            <button
-              onClick={() => handleExport(batchDetail.id)}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-medium rounded-xl hover:shadow-lg transition-all"
-            >
-              <Download className="w-4 h-4" />
-              导出CSV
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => handleExport(batchDetail.id)}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-sm font-medium rounded-xl hover:shadow-lg transition-all"
+              >
+                <Download className="w-4 h-4" />
+                导出CSV
+              </button>
+            </div>
           </div>
 
           {detailLoading ? (
@@ -176,6 +249,7 @@ export default function BatchHistory() {
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">原版本</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">处理结果</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">新状态</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">撤销状态</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">错误信息</th>
                   </tr>
                 </thead>
@@ -205,8 +279,20 @@ export default function BatchHistory() {
                       <td className="py-3 px-4 text-sm text-gray-600">
                         {item.newStatus ? CASE_STATUS_LABELS[item.newStatus] : '-'}
                       </td>
+                      <td className="py-3 px-4">
+                        {item.revokeStatus ? (
+                          <div className="flex items-center gap-2">
+                            {getResultIcon(item.revokeStatus)}
+                            <span className="text-sm text-gray-700">
+                              {BATCH_REVOKE_ITEM_STATUS_LABELS[item.revokeStatus]}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">-</span>
+                        )}
+                      </td>
                       <td className="py-3 px-4 text-sm text-red-600 max-w-xs truncate">
-                        {item.errorMessage || '-'}
+                        {item.revokeErrorMessage || item.errorMessage || '-'}
                       </td>
                     </tr>
                   ))}
@@ -215,6 +301,14 @@ export default function BatchHistory() {
             </div>
           )}
         </div>
+
+        <BatchRevokeModal
+          isOpen={revokeModalOpen}
+          onClose={() => setRevokeModalOpen(false)}
+          batchId={revokeBatchId}
+          batchNo={revokeBatchNo}
+          onSuccess={handleRevokeSuccess}
+        />
       </div>
     );
   }
@@ -292,10 +386,19 @@ export default function BatchHistory() {
                 {batches.map((batch) => (
                   <tr
                     key={batch.id}
-                    className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer"
+                    className={`border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer ${batch.isRevoked ? 'bg-gray-50' : ''}`}
                     onClick={() => navigate(`/batch/${batch.id}`)}
                   >
-                    <td className="py-3 px-4 text-sm font-mono text-blue-600">{batch.batchNo}</td>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-mono text-blue-600">{batch.batchNo}</span>
+                        {batch.isRevoked && (
+                          <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full">
+                            已撤销
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="py-3 px-4 text-sm text-gray-800">
                       {BATCH_OPERATION_LABELS[batch.action as BatchOperationAction]}
                     </td>
@@ -326,6 +429,15 @@ export default function BatchHistory() {
                         >
                           <Download className="w-4 h-4" />
                         </button>
+                        {canRevokeBatch(batch) && (
+                          <button
+                            onClick={() => handleRevoke(batch)}
+                            className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                            title="撤销批次"
+                          >
+                            <Undo2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -335,6 +447,14 @@ export default function BatchHistory() {
           </div>
         )}
       </div>
+
+      <BatchRevokeModal
+        isOpen={revokeModalOpen}
+        onClose={() => setRevokeModalOpen(false)}
+        batchId={revokeBatchId}
+        batchNo={revokeBatchNo}
+        onSuccess={handleRevokeSuccess}
+      />
     </div>
   );
 }
