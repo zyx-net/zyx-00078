@@ -554,3 +554,168 @@ export const EXPORT_ERROR_CODES = {
   EXPORT_EMPTY: 'EXPORT_EMPTY',
   NO_PERMISSION: 'NO_PERMISSION'
 } as const;
+
+export type QualityInspectionStatus = 'pending' | 'passed' | 'needsReview' | 'misjudged';
+
+export const QUALITY_INSPECTION_STATUS_LABELS: Record<QualityInspectionStatus, string> = {
+  pending: '待质检',
+  passed: '通过',
+  needsReview: '需复核',
+  misjudged: '误判'
+};
+
+export type QualityInspectionCaseStatus = 'refundCompleted' | 'rejected' | 'revoked';
+
+export const QUALITY_INSPECTION_CASE_STATUS_LABELS: Record<QualityInspectionCaseStatus, string> = {
+  refundCompleted: '退款完成',
+  rejected: '驳回',
+  revoked: '已撤销'
+};
+
+export interface QualityInspectionCaseSnapshot {
+  orderNo: string;
+  caseType: CaseType;
+  productName: string;
+  quantity: number;
+  refundAmount: number;
+  responsibleParty: ResponsibleParty;
+  merchantName: string;
+  description: string;
+  originalDecision: 'refund' | 'reject';
+  originalDecisionRemark: string;
+  originalOperatorName: string;
+  originalDecisionAt: string;
+  evidenceLinks: string[];
+  hitRule?: string;
+  hitRuleReason?: string;
+  exportRecordSummary?: string;
+  caseVersion: number;
+  caseStatus: QualityInspectionCaseStatus;
+}
+
+export interface QualityInspection {
+  id: number;
+  inspectionNo: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  caseType?: CaseType;
+  responsibleParty?: ResponsibleParty;
+  operatorId?: number;
+  operatorName?: string;
+  totalCount: number;
+  passedCount: number;
+  needsReviewCount: number;
+  misjudgedCount: number;
+  pendingCount: number;
+  createdBy: number;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QualityInspectionItem {
+  id: number;
+  inspectionId: number;
+  caseId: number;
+  version: number;
+  snapshot: QualityInspectionCaseSnapshot;
+  status: QualityInspectionStatus;
+  conclusion?: QualityInspectionStatus;
+  reason?: string;
+  inspectorId?: number;
+  inspectorName?: string;
+  inspectedAt?: string;
+  hasReviewHistory: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QualityInspectionReview {
+  id: number;
+  inspectionItemId: number;
+  version: number;
+  previousStatus: QualityInspectionStatus;
+  newStatus: QualityInspectionStatus;
+  reason: string;
+  inspectorId: number;
+  inspectorName: string;
+  createdAt: string;
+}
+
+export interface QualityInspectionOperationLog {
+  id: number;
+  inspectionId?: number;
+  inspectionItemId?: number;
+  operationType: 'create' | 'update' | 'inspect' | 'review' | 'import' | 'export';
+  operatorId: number;
+  operatorName: string;
+  operatorRole: UserRole;
+  detail: string;
+  createdAt: string;
+}
+
+export interface QualityInspectionDetail extends QualityInspection {
+  items: QualityInspectionItem[];
+}
+
+export interface QualityInspectionItemDetail extends QualityInspectionItem {
+  reviews: QualityInspectionReview[];
+}
+
+export interface CreateQualityInspectionRequest {
+  title: string;
+  startDate: string;
+  endDate: string;
+  caseType?: CaseType;
+  responsibleParty?: ResponsibleParty;
+  operatorId?: number;
+  caseIds?: number[];
+}
+
+export interface CreateQualityInspectionResponse {
+  inspectionId: number;
+  inspectionNo: string;
+  totalCount: number;
+}
+
+export interface InspectQualityRequest {
+  itemId: number;
+  version: number;
+  status: QualityInspectionStatus;
+  reason: string;
+}
+
+export interface BatchInspectQualityRequest {
+  items: Array<{
+    itemId: number;
+    version: number;
+    status: QualityInspectionStatus;
+    reason: string;
+  }>;
+}
+
+export interface QualityInspectionListFilter {
+  startDate?: string;
+  endDate?: string;
+  caseType?: CaseType;
+  status?: QualityInspectionStatus;
+  createdBy?: number;
+}
+
+export interface QualityInspectionImportResult {
+  successCount: number;
+  failedCount: number;
+  errors: Array<{ row: number; error: string }>;
+}
+
+export const QUALITY_INSPECTION_ERROR_CODES = {
+  INSPECTION_NOT_FOUND: 'INSPECTION_NOT_FOUND',
+  INSPECTION_ITEM_NOT_FOUND: 'INSPECTION_ITEM_NOT_FOUND',
+  VERSION_CONFLICT: 'VERSION_CONFLICT',
+  NO_CASES_SELECTED: 'NO_CASES_SELECTED',
+  INVALID_STATUS: 'INVALID_STATUS',
+  CANNOT_MODIFY_HISTORY: 'CANNOT_MODIFY_HISTORY',
+  IMPORT_FORMAT_ERROR: 'IMPORT_FORMAT_ERROR',
+  NO_PERMISSION: 'NO_PERMISSION'
+} as const;

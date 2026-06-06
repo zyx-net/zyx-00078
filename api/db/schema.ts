@@ -255,6 +255,93 @@ CREATE TABLE IF NOT EXISTS export_records (
 
 CREATE INDEX IF NOT EXISTS idx_export_records_created ON export_records(createdAt);
 CREATE INDEX IF NOT EXISTS idx_export_records_operator ON export_records(operatorId);
+
+CREATE TABLE IF NOT EXISTS quality_inspections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  inspectionNo TEXT UNIQUE NOT NULL,
+  title TEXT NOT NULL,
+  startDate TEXT NOT NULL,
+  endDate TEXT NOT NULL,
+  caseType TEXT CHECK(caseType IN ('outOfStock', 'damaged', 'wrongDelivery')),
+  responsibleParty TEXT CHECK(responsibleParty IN ('merchant', 'logistics', 'platform')),
+  operatorId INTEGER,
+  operatorName TEXT,
+  totalCount INTEGER NOT NULL DEFAULT 0,
+  passedCount INTEGER NOT NULL DEFAULT 0,
+  needsReviewCount INTEGER NOT NULL DEFAULT 0,
+  misjudgedCount INTEGER NOT NULL DEFAULT 0,
+  pendingCount INTEGER NOT NULL DEFAULT 0,
+  createdBy INTEGER NOT NULL,
+  createdByName TEXT NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (createdBy) REFERENCES users(id),
+  FOREIGN KEY (operatorId) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS quality_inspection_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  inspectionId INTEGER NOT NULL,
+  caseId INTEGER NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  snapshot TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK(status IN ('pending', 'passed', 'needsReview', 'misjudged')),
+  conclusion TEXT CHECK(conclusion IN ('passed', 'needsReview', 'misjudged')),
+  reason TEXT,
+  inspectorId INTEGER,
+  inspectorName TEXT,
+  inspectedAt DATETIME,
+  hasReviewHistory INTEGER NOT NULL DEFAULT 0,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (inspectionId) REFERENCES quality_inspections(id),
+  FOREIGN KEY (caseId) REFERENCES cases(id)
+);
+
+CREATE TABLE IF NOT EXISTS quality_inspection_reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  inspectionItemId INTEGER NOT NULL,
+  version INTEGER NOT NULL,
+  previousStatus TEXT NOT NULL
+    CHECK(previousStatus IN ('pending', 'passed', 'needsReview', 'misjudged')),
+  newStatus TEXT NOT NULL
+    CHECK(newStatus IN ('passed', 'needsReview', 'misjudged')),
+  reason TEXT NOT NULL,
+  inspectorId INTEGER NOT NULL,
+  inspectorName TEXT NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (inspectionItemId) REFERENCES quality_inspection_items(id),
+  FOREIGN KEY (inspectorId) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS quality_inspection_operation_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  inspectionId INTEGER,
+  inspectionItemId INTEGER,
+  operationType TEXT NOT NULL
+    CHECK(operationType IN ('create', 'update', 'inspect', 'review', 'import', 'export')),
+  operatorId INTEGER NOT NULL,
+  operatorName TEXT NOT NULL,
+  operatorRole TEXT NOT NULL CHECK(operatorRole IN ('leader', 'merchant', 'cs')),
+  detail TEXT NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (inspectionId) REFERENCES quality_inspections(id),
+  FOREIGN KEY (inspectionItemId) REFERENCES quality_inspection_items(id),
+  FOREIGN KEY (operatorId) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_quality_inspections_created ON quality_inspections(createdAt);
+CREATE INDEX IF NOT EXISTS idx_quality_inspections_created_by ON quality_inspections(createdBy);
+CREATE INDEX IF NOT EXISTS idx_quality_inspections_case_type ON quality_inspections(caseType);
+CREATE INDEX IF NOT EXISTS idx_quality_inspection_items_inspection ON quality_inspection_items(inspectionId);
+CREATE INDEX IF NOT EXISTS idx_quality_inspection_items_case ON quality_inspection_items(caseId);
+CREATE INDEX IF NOT EXISTS idx_quality_inspection_items_status ON quality_inspection_items(status);
+CREATE INDEX IF NOT EXISTS idx_quality_inspection_reviews_item ON quality_inspection_reviews(inspectionItemId);
+CREATE INDEX IF NOT EXISTS idx_quality_inspection_logs_inspection ON quality_inspection_operation_logs(inspectionId);
+CREATE INDEX IF NOT EXISTS idx_quality_inspection_logs_item ON quality_inspection_operation_logs(inspectionItemId);
+CREATE INDEX IF NOT EXISTS idx_quality_inspection_logs_operation ON quality_inspection_operation_logs(operationType);
+CREATE INDEX IF NOT EXISTS idx_quality_inspection_logs_created ON quality_inspection_operation_logs(createdAt);
 `;
 
 export const INITIAL_USERS_SQL = `
